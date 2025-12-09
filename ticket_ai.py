@@ -119,7 +119,40 @@ async def maybe_handle_ticket_ai_message(
     content = (message.content or "").strip()
     if not content:
         return
-    lower_content = content.lower()
+            lower_content = content.lower()
+    
+    # ---------- SCRAP FAQ SHORTCUT ----------
+    if "scrap" in lower_content and any(
+        phrase in lower_content
+        for phrase in (
+            "how do i get",
+            "how to get",
+            "how do i use",
+            "how to use",
+            "what is",
+            "what does it do",
+        )
+    ):
+        # Use raffle_text (where you put your scrap rules)
+        scrap_text = raffle_text or (
+            "**SCRAP** is our Discord currency used for shop purchases and rewards.\n\n"
+            "If this message shows, ask SWIRTZ to update the RAFFLE_TEXT env var "
+            "with the full scrap rules."
+        )
+
+        embed = discord.Embed(
+            description=scrap_text,
+            color=0xE74C3C,  # STARZ red
+        )
+        embed.set_author(name="OTIS ‖ AI ADMIN")
+
+        try:
+            await channel.send(embed=embed)
+        except Exception as e:
+            print(f"[TICKET-AI] Failed to send scrap FAQ embed: {e}")
+        return True
+
+
 
     # ---------------- VIP SHORTCUT ----------------
     if "vip" in lower_content and any(
@@ -236,4 +269,5 @@ async def maybe_handle_ticket_ai_message(
     _append_history(session, "user", content)
     _append_history(session, "assistant", reply_text)
     session["assistant_count"] = assistant_count + 1
+
 
