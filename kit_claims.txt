@@ -1,0 +1,227 @@
+# =========================================================
+# KIT CLAIM INSTRUCTIONS (KITS 1–44)
+# =========================================================
+# This file maps each EliteKit number to the Quickchat phrase(s)
+# a player must use in-game to claim that kit.
+#
+# KITS 1–22:
+#   Use ONE Quickchat phrase directly.
+#
+# KITS 23–44:
+#   Step 1: "I'm Outta Ammo"
+#   Step 2: The specific Quickchat phrase below.
+#
+# You can edit the "name:" fields any time if kit names change.
+# =========================================================
+
+
+# ---------------------------------------------------------
+# KITS 1–22 (single Quickchat phrase)
+# ---------------------------------------------------------
+
+[elitekit1]
+name: ultimate raid kit
+claim: I Need Metal Fragments
+
+[elitekit2]
+name: full metal ak
+claim: I Need High Quality Metal
+
+[elitekit3]
+name: basic raid kit
+claim: I Need Scrap
+
+[elitekit4]
+name: mp5 hazzy
+claim: I Need Low Grade Fuel
+
+[elitekit5]
+name: full metal lr300
+claim: I Need Food
+
+[elitekit6]
+name: boosting kit
+claim: I Need Water
+
+[elitekit7]
+name: food kit
+claim: I Have Metal Hatchet
+
+[elitekit8]
+name: heli destroyer
+claim: I Have High Quality Metal
+
+[elitekit9]
+name: brad destroyer
+claim: I Have Scrap
+
+[elitekit10]
+name: basic build kit
+claim: I Have Low Grade Fuel
+
+[elitekit11]
+name: elite build kit
+claim: I Have Food
+
+[elitekit12]
+name: 20x full metals
+claim: I Have Water
+
+[elitekit13]
+name: explo raider
+claim: I Have Hunting Bow
+
+[elitekit14]
+name: elite vip start
+claim: I Have Pickaxe
+
+[elitekit15]
+name: ultimate build kit
+claim: I'm Going For Stone
+
+[elitekit16]
+name: raid base kit
+claim: I'm Going For Wood
+
+[elitekit17]
+name: elite raid kit
+claim: I'm Going For Metal
+
+[elitekit18]
+name: auto turret kit
+claim: I'm Going For Food
+
+[elitekit19]
+name: comp runner kit
+claim: I'm Going For Water
+
+[elitekit20]
+name: boom crafter kit
+claim: I'm Going For Scrap
+
+[elitekit21]
+name: guns/attachments kit
+claim: I'm Going For Metal Fragments
+
+[elitekit22]
+name: mega builder kit
+claim: I'm Going For Medicine
+
+
+
+# ---------------------------------------------------------
+# KITS 23–44 (two-step claims)
+# Step 1 = "I'm Outta Ammo"
+# Step 2 = Quickchat phrase shown here
+# ---------------------------------------------------------
+
+[elitekit23]
+name: oil rat
+step1: I'm Outta Ammo
+step2: I Need Metal Fragments
+
+[elitekit24]
+name: locker kit
+step1: I'm Outta Ammo
+step2: I Need High Quality Metal
+
+[elitekit25]
+name: roam kit
+step1: I'm Outta Ammo
+step2: I Need Scrap
+
+[elitekit26]
+name: farmer bob
+step1: I'm Outta Ammo
+step2: I Need Low Grade Fuel
+
+[elitekit27]
+name: roam raider
+step1: I'm Outta Ammo
+step2: I Need Food
+
+[elitekit28]
+name: mp5 roadsign
+step1: I'm Outta Ammo
+step2: I Need Water
+
+[elitekit29]
+name: 2x2 raider
+step1: I'm Outta Ammo
+step2: I Have Hatchet
+
+[elitekit30]
+name: free builder
+step1: I'm Outta Ammo
+step2: I Have High Quality Metal
+
+[elitekit31]
+name: EDIT_ME
+step1: I'm Outta Ammo
+step2: I Have Scrap
+
+[elitekit32]
+name: ultimate start
+step1: I'm Outta Ammo
+step2: I Have Low Grade Fuel
+
+[elitekit33]
+name: mega raider
+step1: I'm Outta Ammo
+step2: I Have Food
+
+[elitekit34]
+name: mega locker refill
+step1: I'm Outta Ammo
+step2: I Have Water
+
+[elitekit35]
+name: raid sealer
+step1: I'm Outta Ammo
+step2: I Have Hunting Bow
+
+[elitekit36]
+name: mini raider
+step1: I'm Outta Ammo
+step2: I Have Pickaxe
+
+[elitekit37]
+name: EDIT_ME
+step1: I'm Outta Ammo
+step2: I'm Going For Stone
+
+[elitekit38]
+name: EDIT_ME
+step1: I'm Outta Ammo
+step2: I'm Going For Wood
+
+[elitekit39]
+name: EDIT_ME
+step1: I'm Outta Ammo
+step2: I'm Going For Metal
+
+[elitekit40]
+name: areumad stream kit
+step1: I'm Outta Ammo
+step2: I'm Going For Food
+
+[elitekit41]
+name: rocket raider
+step1: I'm Outta Ammo
+step2: I'm Going For Water
+
+[elitekit42]
+name: ultimate vip
+step1: I'm Outta Ammo
+step2: I'm Going For Scrap
+
+[elitekit43]
+name: yungperc stream kit
+step1: I'm Outta Ammo
+step2: I'm Going For Metal Fragments
+
+[elitekit44]
+name: ultimate raid base
+step1: I'm Outta Ammo
+step2: I'm Going For Medicine
+
