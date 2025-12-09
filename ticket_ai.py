@@ -148,8 +148,9 @@ async def maybe_handle_ticket_ai_message(
         try:
             await channel.send(embed=embed)
         except Exception as e:
-            print(f\"[TICKET-AI] Failed to send VIP embed: {e}\")
+            print(f"[TICKET-AI] Failed to send VIP embed: {e}")
         return
+
 
     # Prepare / get session for this ticket
     session = _get_session(ticket_sessions, channel.id)
@@ -235,3 +236,4 @@ async def maybe_handle_ticket_ai_message(
     _append_history(session, "user", content)
     _append_history(session, "assistant", reply_text)
     session["assistant_count"] = assistant_count + 1
+
