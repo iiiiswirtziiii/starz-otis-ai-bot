@@ -4,6 +4,18 @@ from typing import Dict, Any, List, Tuple
 
 import discord
 
+# ==========================
+# SCRAP INFORMATION TEXT
+# ==========================
+SCRAP_INFO = """
+**SCRAP (STARZ Discord Currency)**
+
+- Earn SCRAP from airdrops, giveaways, events, and other Discord activities.
+- Spend SCRAP in our KAOS shop / Discord shop to get in-game kits, points, or rewards.
+- SCRAP is *not* the same as in-game Rust scrap; it only exists in the STARZ Discord economy.
+- If you have questions about SCRAP trades or balance issues, please open a ticket.
+"""
+
 
 # Max times OTIS will respond in a single ticket before escalating
 MAX_SUPPORT_ASSISTANT_MESSAGES = 5
@@ -121,9 +133,13 @@ async def maybe_handle_ticket_ai_message(
         return
             lower_content = content.lower()
     
-    # ---------- SCRAP FAQ SHORTCUT ----------
-    if "scrap" in lower_content and any(
-        phrase in lower_content
+    # ==========================
+    # SCRAP FAQ SHORTCUT
+    # ==========================
+    lower = content.lower()
+
+    if "scrap" in lower and any(
+        phrase in lower
         for phrase in (
             "how do i get",
             "how to get",
@@ -131,26 +147,23 @@ async def maybe_handle_ticket_ai_message(
             "how to use",
             "what is",
             "what does it do",
+            "how does scrap work",
         )
     ):
-        # Use raffle_text (where you put your scrap rules)
-        scrap_text = raffle_text or (
-            "**SCRAP** is our Discord currency used for shop purchases and rewards.\n\n"
-            "If this message shows, ask SWIRTZ to update the RAFFLE_TEXT env var "
-            "with the full scrap rules."
-        )
-
         embed = discord.Embed(
-            description=scrap_text,
-            color=0xE74C3C,  # STARZ red
+            title="💰 STARZ SCRAP GUIDE",
+            description=SCRAP_INFO,
+            color=0xE74C3C  # Red
         )
-        embed.set_author(name="OTIS ‖ AI ADMIN")
+        embed.set_footer(text="OTIS ‖ AI ADMIN")
 
         try:
             await channel.send(embed=embed)
         except Exception as e:
-            print(f"[TICKET-AI] Failed to send scrap FAQ embed: {e}")
+            print(f"[TICKET-AI] Failed to send SCRAP embed: {e}")
+
         return True
+
 
 
 
@@ -269,5 +282,6 @@ async def maybe_handle_ticket_ai_message(
     _append_history(session, "user", content)
     _append_history(session, "assistant", reply_text)
     session["assistant_count"] = assistant_count + 1
+
 
 
