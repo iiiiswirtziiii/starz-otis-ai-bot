@@ -55,7 +55,10 @@ KIT_ISSUE_KEYWORDS = (
     "no perms for kit",
     "no permission for kit",
     "no permissions for kit",
+    "wont let me claim",
+    "won't let me claim",
 )
+
 
 
 def load_kit_claims_text() -> None:
@@ -369,11 +372,14 @@ async def kit_first_help(
 ) -> bool:
     """
     First-line helper for kit questions.
-    - If the message looks like a kit question/issue:
-      * Try to send role-based instructions.
-      * Then try to parse kit names from the text.
-      * Otherwise, fall back to a generic prompt so OTIS can still help.
-    Returns True if we handled the message (so main AI should not duplicate).
+
+    Rules:
+    - If the message explicitly names one or more kits (e.g. 'ultimate raid kit'),
+      we answer ONLY for those kits (text-based).
+    - Otherwise, for generic questions like "how do I claim my kit" or
+      "some raid kits aren't working", we use the member's roles and show
+      ALL their kits.
+    - We only ever send ONE reply per message.
     """
     lt = content.lower()
 
@@ -382,23 +388,22 @@ async def kit_first_help(
         return False
 
     author = message.author
-    handled = False
 
+    # 1) If the text itself mentions kit names, prioritize that.
+    text_keys = detect_kit_keys_in_text(lt)
+    if text_keys:
+        # This will build an embed ONLY for the kits mentioned in the text
+        handled_text = await send_kit_instructions_for_text(channel, content)
+        if handled_text:
+            return True
+
+    # 2) Otherwise, fall back to role-based instructions (all kits they own).
     if isinstance(author, discord.Member):
-        # Try role-based answer first
-        if await send_kit_instructions_for_member_roles(channel, author):
-            handled = True
+        handled_roles = await send_kit_instructions_for_member_roles(channel, author)
+        if handled_roles:
+            return True
 
-    # If we didn't find anything via roles, or the text clearly lists kits,
-    # also try to parse directly from the content.
-    if not handled or detect_kit_keys_in_text(lt):
-        if await send_kit_instructions_for_text(channel, content):
-            handled = True
-
-    if handled:
-        return True
-
-    # Fallback: we couldn’t match any kits
+    # 3) Fallback: we couldn’t match any kits at all
     fallback_embed = discord.Embed(
         description=(
             "It looks like you’re having a **kit** issue.\n\n"
@@ -413,5 +418,8 @@ async def kit_first_help(
     return True
 
 
+
+
 # Load once when module is imported
 load_kit_claims_text()
+
