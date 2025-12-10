@@ -1178,14 +1178,17 @@ async def watch_rcon_console_for_server(
                         f"{matching_admin_ids} in log: {msg_text}"
                     )
 
-
-
+        except Exception as e:
+            print(f"[RCON-WATCH:{server_key}] WebRCON error: {e}")
+            await asyncio.sleep(10)
 
 
 # ===================== BOT READY EVENT =====================
 
 @bot.event
 async def on_ready():
+    ...
+
     global rcon_failures
     # Track startup health so we can show it in the embed
     ban_db_ok = False
