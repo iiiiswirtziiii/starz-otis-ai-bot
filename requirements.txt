@@ -1,0 +1,5 @@
+
+discord.py>=2.4.0
+python-dotenv
+openai>=1.0.0
+websockets>=10.4
