@@ -1,0 +1,157 @@
+{
+  "LAUNCHSITE": {
+    "1": {
+      "zone_x": -239.0,
+      "zone_y": 11.95,
+      "zone_z": 1135.27,
+      "radius": 120.0,
+      "dest_x": -239.0,
+      "dest_y": 61.7,
+      "dest_z": 1135.27,
+      "color": "ORANGE",
+      "enter_message": "Teleporting via Launchsite zone...",
+      "exit_message": "You have left the Launchsite zone.",
+      "trigger_radius": 1.5,
+      "spawn_points": [
+        [
+          -239.0,
+          61.7,
+          1135.27
+        ]
+      ]
+    }
+  },
+  "AIRFIELD": {
+    "1": {
+      "zone_x": -237.41,
+      "zone_y": 11.95,
+      "zone_z": 1132.25,
+      "radius": 120.0,
+      "dest_x": -237.41,
+      "dest_y": 61.7,
+      "dest_z": 1132.25,
+      "color": "GREEN",
+      "enter_message": "Teleporting via Airfield zone...",
+      "exit_message": "You have left the Airfield zone.",
+      "trigger_radius": 1.5,
+      "spawn_points": [
+        [
+          -237.41,
+          61.7,
+          1132.25
+        ]
+      ]
+    }
+  },
+  "JUNKYARD": {},
+  "OXUMS GAS STATION": {
+    "1": {
+      "zone_x": -234.77,
+      "zone_y": 11.77,
+      "zone_z": 1126.09,
+      "radius": 120.0,
+      "dest_x": -234.0,
+      "dest_y": 61.52,
+      "dest_z": 1126.09,
+      "color": "YELLOW",
+      "enter_message": "Teleporting via Oxums Gas Station zone...",
+      "exit_message": "You have left the Oxums Gas Station zone.",
+      "trigger_radius": 1.5,
+      "spawn_points": [
+        [
+          -234.0,
+          61.52,
+          1126.09
+        ]
+      ]
+    }
+  },
+  "WATER TREATMENT PLANT": {
+    "1": {
+      "zone_x": -236.31,
+      "zone_y": 11.77,
+      "zone_z": 1129.36,
+      "radius": 120.0,
+      "dest_x": -236.31,
+      "dest_y": 61.52,
+      "dest_z": 1129.36,
+      "color": "CYAN",
+      "enter_message": "Teleporting via Water Treatment Plant zone...",
+      "exit_message": "You have left the Water Treatment Plant zone.",
+      "trigger_radius": 1.5,
+      "spawn_points": [
+        [
+          -236.31,
+          61.52,
+          1129.36
+        ]
+      ]
+    }
+  },
+  "BANDIT CAMP": {
+    "1": {
+      "zone_x": -224.78,
+      "zone_y": 11.77,
+      "zone_z": 1139.81,
+      "radius": 120.0,
+      "dest_x": -224.78,
+      "dest_y": 60.75,
+      "dest_z": 1139.81,
+      "color": "RED",
+      "enter_message": "Teleporting via Bandit Camp zone...",
+      "exit_message": "You have left the Bandit Camp zone.",
+      "trigger_radius": 1.5,
+      "spawn_points": [
+        [
+          -224.78,
+          60.75,
+          1139.81
+        ]
+      ]
+    }
+  },
+  "MILLITARY TUNNELS": {
+    "1": {
+      "zone_x": -223.29,
+      "zone_y": 11.77,
+      "zone_z": 1136.83,
+      "radius": 120.0,
+      "dest_x": -223.29,
+      "dest_y": 60.75,
+      "dest_z": 1136.83,
+      "color": "PURPLE",
+      "enter_message": "Teleporting via Military Tunnels zone...",
+      "exit_message": "You have left the Military Tunnels zone.",
+      "trigger_radius": 1.5,
+      "spawn_points": [
+        [
+          -223.29,
+          60.75,
+          1136.83
+        ]
+      ]
+    }
+  },
+  "ABANDONED MILITARY BASE": {
+    "1": {
+      "zone_x": -221.72,
+      "zone_y": 11.72,
+      "zone_z": 1133.67,
+      "radius": 120.0,
+      "dest_x": -221.0,
+      "dest_y": 60.75,
+      "dest_z": 1133.0,
+      "color": "GRAY",
+      "enter_message": "Teleporting via Abandoned Military Base zone...",
+      "exit_message": "You have left the Abandoned Military Base zone.",
+      "trigger_radius": 1.5,
+      "spawn_points": [
+        [
+          -221.0,
+          60.75,
+          1133.0
+        ]
+      ]
+    }
+  }
+}
