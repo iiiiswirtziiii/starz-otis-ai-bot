@@ -124,8 +124,15 @@ def _wake_expired_for_server(server_key: str, now_ts: float) -> None:
             continue
         if now_ts >= float(until):
             _cooldown_until.pop((sk, pname), None)
-            if pname not in _expired_set[server_key] and pname not in _ready_set[server_key]:
-                expq.append(pname)
+
+            # when cooldown expires, put them back into rotation,
+            # but not into READY (near-only) automatically.
+            if (
+                pname not in _expired_set[server_key]
+                and pname not in _ready_set[server_key]
+                and pname not in _scan_set[server_key]
+            ):
+                _expired_queues[server_key].append(pname)
                 _expired_set[server_key].add(pname)
 
 def _pick_players(server_key: str) -> List[str]:
@@ -195,6 +202,7 @@ def _log_status_if_due(server_key: str, working: bool) -> None:
 # Playerlist updates
 # -------------------------
 def update_connected_players(server_key: str, players: list) -> None:
+    # Accept either list[str] or list[dict] from playerlist
     names: List[str] = []
     for p in players or []:
         if isinstance(p, dict):
@@ -204,13 +212,17 @@ def update_connected_players(server_key: str, players: list) -> None:
         elif isinstance(p, str):
             names.append(p.strip())
 
+    # de-dupe, keep order
     names = list(dict.fromkeys(n for n in names if n))
     now_ts = time.time()
 
+    # Empty server handling
     if not names:
         _empty_server_until[server_key] = now_ts + EMPTY_SERVER_COOLDOWN_SECONDS
         _poll_queues[server_key].clear()
         _ready_set[server_key].clear()
+        _scan_queues[server_key].clear()
+        _scan_set[server_key].clear()
         _expired_queues[server_key].clear()
         _expired_set[server_key].clear()
         return
@@ -219,65 +231,46 @@ def update_connected_players(server_key: str, players: list) -> None:
 
     online = set(names)
 
+    # Purge cooldown entries for offline players
     for (sk, pname) in list(_cooldown_until.keys()):
         if sk == server_key and pname not in online:
             _cooldown_until.pop((sk, pname), None)
 
-    q = _poll_queues[server_key]
-    q.clear()
+    # Rebuild READY (NEAR-only) + SCAN (everyone else), skipping cooldown players
+    rq = _poll_queues[server_key]
+    sq = _scan_queues[server_key]
+    rq.clear()
+    sq.clear()
     _ready_set[server_key].clear()
+    _scan_set[server_key].clear()
+
+    near = _near_set[server_key]
 
     for n in names:
-        if now_ts >= _cooldown_until.get((server_key, n), 0.0):
-            q.append(n)
+        if now_ts < _cooldown_until.get((server_key, n), 0.0):
+            continue  # cooldown -> in neither queue
+        if n in near:
+            rq.append(n)
             _ready_set[server_key].add(n)
+        else:
+            sq.append(n)
+            _scan_set[server_key].add(n)
 
+    # Clean EXPIRED lane too (keep only online, not cooldown, not already queued)
     expq = _expired_queues[server_key]
     kept = deque()
     _expired_set[server_key].clear()
     for n in expq:
-        if n in online and n not in _ready_set[server_key]:
+        if (
+            n in online
+            and now_ts >= _cooldown_until.get((server_key, n), 0.0)
+            and n not in _ready_set[server_key]
+            and n not in _scan_set[server_key]
+        ):
             kept.append(n)
             _expired_set[server_key].add(n)
     expq.clear()
     expq.extend(kept)
-
-async def process_printpos_response(server_key: str, player_name: str, resp_text: str) -> None:
-    if not _enabled or _send_rcon is None:
-        return
-
-    st = _stats[server_key]
-    m = PRINTPOS_COORD_RE.search(resp_text or "")
-    if not m:
-        st["no_coords"] += 1
-        _log_status_if_due(server_key, False)
-        return
-
-    x = float(m.group("x"))
-    y = float(m.group("y"))
-    z = float(m.group("z"))
-    st["coords"] += 1
-
-    if PRINTPOS_VERBOSE_LOGS:
-        print(f"[STARZ-PRINTPOS] POS {server_key}/{player_name} = ({x:.2f},{y:.2f},{z:.2f})")
-
-    d2 = _min_dist2_to_any_zone(x, y, z)
-    if d2 is not None and d2 > FAR_DISTANCE_METERS ** 2:
-        _cooldown_until[(server_key, player_name)] = time.time() + FAR_SKIP_SECONDS
-        st["far"] += 1
-        return
-
-    cmds = check_zones_for_player(server_key, player_name, x, y, z)
-    if not cmds:
-        return
-
-    st["tp"] += 1
-    for cmd in cmds:
-        await _send_rcon(server_key, cmd)
-        await asyncio.sleep(PER_COMMAND_DELAY)
-
-
-
 
 
 async def handle_printpos_console_line(server_key: str, msg_text: str) -> None:
@@ -318,7 +311,6 @@ async def process_printpos_response(server_key: str, player_name: str, resp_text
 
     if PRINTPOS_VERBOSE_LOGS:
         print(f"[STARZ-PRINTPOS] POS {server_key}/{player_name} = ({x:.2f},{y:.2f},{z:.2f})")
-
     # ---- NEAR / FAR classification ----
     d2 = _min_dist2_to_any_zone(x, y, z)
 
@@ -329,6 +321,14 @@ async def process_printpos_response(server_key: str, player_name: str, resp_text
 
         # mark as not near (so next playerlist rebuild keeps them in SCAN, not READY)
         _near_set[server_key].discard(player_name)
+
+        # IMPORTANT: remove from READY queue immediately so "ready=" clears fast
+        if player_name in _ready_set[server_key]:
+            _ready_set[server_key].discard(player_name)
+            _poll_queues[server_key] = deque(
+                p for p in _poll_queues[server_key] if p != player_name
+            )
+
         return
 
     # If we get here: they are near enough (or no zones configured yet)
@@ -406,6 +406,7 @@ def start_printpos_polling() -> None:
     if not _position_poll_loop.is_running():
         _position_poll_loop.start()
         print("[STARZ-PRINTPOS] Position polling loop started.")
+
 
 
 
