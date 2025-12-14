@@ -1366,18 +1366,6 @@ async def handle_rcon_console_line(
     )
 
 
-    # 4) Promoter spawn monitor – run per admin_id
-    for admin_id in matching_admin_ids:
-        try:
-            await maybe_handle_promoter_spawn(
-                bot=bot,
-                admin_id=admin_id,
-                server_name=server_name,
-                detail=msg_text,
-                created_at_ts=created_at_ts,
-            )
-        except Exception as e:
-            print(f"[RCON-HANDLER:{server_key}] Promoter monitor error: {e}")
 
     # 5) High-risk spawn enforcement (rockets/C4/MLRS)
     lt = msg_text.lower()
