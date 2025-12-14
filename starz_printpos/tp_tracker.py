@@ -120,26 +120,36 @@ def _wake_expired_for_server(server_key: str, now_ts: float) -> None:
 
 
 def _pick_players(server_key: str) -> List[str]:
+    """
+    Fair lane scheduler:
+    - Prefer players coming off cooldown (EXPIRED) so they get rechecked quickly.
+    - Split picks per tick:
+        2 from expired, then fill remaining from ready (for batch size 4).
+    """
     picked: List[str] = []
 
     ready_q = _poll_queues[server_key]
     expired_q = _expired_queues[server_key]
 
-    # 1 from expired
-    if expired_q:
+    # how many expired to take this tick (tune here)
+    take_expired = min(2, PRINTPOS_BATCH_SIZE)
+
+    # Take from expired lane first
+    for _ in range(take_expired):
+        if not expired_q or len(picked) >= PRINTPOS_BATCH_SIZE:
+            break
         p = expired_q.popleft()
         _expired_set[server_key].discard(p)
         picked.append(p)
 
-    # up to 3 from ready
-    for _ in range(min(3, PRINTPOS_BATCH_SIZE - len(picked))):
-        if not ready_q:
-            break
+    # Fill remaining from ready lane
+    while ready_q and len(picked) < PRINTPOS_BATCH_SIZE:
         p = ready_q.popleft()
         _ready_set[server_key].discard(p)
         picked.append(p)
 
     return picked
+
 
 
 def _log_status_if_due(server_key: str, working: bool) -> None:
@@ -206,10 +216,16 @@ def update_connected_players(server_key: str, players: list) -> None:
     q.clear()
     _ready_set[server_key].clear()
 
-    for n in names:
-        if now_ts >= _cooldown_until.get((server_key, n), 0.0):
-            q.append(n)
-            _ready_set[server_key].add(n)
+for n in names:
+    # IMPORTANT:
+    # If they're in cooldown dict (even if "expired"), do NOT put them back into READY here.
+    # _wake_expired_for_server() will move them into the EXPIRED fast lane instead.
+    if (server_key, n) in _cooldown_until:
+        continue
+
+    q.append(n)
+    _ready_set[server_key].add(n)
+
 
     # clean expired
     expq = _expired_queues[server_key]
@@ -323,3 +339,4 @@ def start_printpos_polling() -> None:
     if not _position_poll_loop.is_running():
         _position_poll_loop.start()
         print("[STARZ-PRINTPOS] Position polling loop started.")
+
