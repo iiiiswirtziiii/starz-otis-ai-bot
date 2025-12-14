@@ -194,6 +194,53 @@ def _log_status_if_due(server_key: str, working: bool) -> None:
 # -------------------------
 # Playerlist updates
 # -------------------------
+def update_connected_players(server_key: str, players: list) -> None:
+    names: List[str] = []
+    for p in players or []:
+        if isinstance(p, dict):
+            n = p.get("DisplayName")
+            if n:
+                names.append(str(n).strip())
+        elif isinstance(p, str):
+            names.append(p.strip())
+
+    names = list(dict.fromkeys(n for n in names if n))
+    now_ts = time.time()
+
+    if not names:
+        _empty_server_until[server_key] = now_ts + EMPTY_SERVER_COOLDOWN_SECONDS
+        _poll_queues[server_key].clear()
+        _ready_set[server_key].clear()
+        _expired_queues[server_key].clear()
+        _expired_set[server_key].clear()
+        return
+    else:
+        _empty_server_until.pop(server_key, None)
+
+    online = set(names)
+
+    for (sk, pname) in list(_cooldown_until.keys()):
+        if sk == server_key and pname not in online:
+            _cooldown_until.pop((sk, pname), None)
+
+    q = _poll_queues[server_key]
+    q.clear()
+    _ready_set[server_key].clear()
+
+    for n in names:
+        if now_ts >= _cooldown_until.get((server_key, n), 0.0):
+            q.append(n)
+            _ready_set[server_key].add(n)
+
+    expq = _expired_queues[server_key]
+    kept = deque()
+    _expired_set[server_key].clear()
+    for n in expq:
+        if n in online and n not in _ready_set[server_key]:
+            kept.append(n)
+            _expired_set[server_key].add(n)
+    expq.clear()
+    expq.extend(kept)
 
 async def process_printpos_response(server_key: str, player_name: str, resp_text: str) -> None:
     if not _enabled or _send_rcon is None:
@@ -359,6 +406,7 @@ def start_printpos_polling() -> None:
     if not _position_poll_loop.is_running():
         _position_poll_loop.start()
         print("[STARZ-PRINTPOS] Position polling loop started.")
+
 
 
 
