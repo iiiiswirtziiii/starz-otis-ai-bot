@@ -1121,15 +1121,13 @@ async def handle_spawn_enforcement_for_event(
     if TRACKER_DISABLED_UNTIL and now < TRACKER_DISABLED_UNTIL:
         return
 
-# Try to parse the line for gamertag + amount (FULL parser)
-parsed_full = _parse_spawn_from_console_line_full(console_line)
-gamertag: Optional[str] = None
-amount: int = 0
+    # Try to parse the line for gamertag + amount (FULL parser)
+    parsed_full = _parse_spawn_from_console_line_full(console_line)
+    gamertag: Optional[str] = None
+    amount: int = 0
 
-if parsed_full:
-    gamertag, amount, _item_text = parsed_full
-
-
+    if parsed_full:
+        gamertag, amount, _item_text = parsed_full
 
     # Lookup basic info for DB / logs (gives us main GT + Discord ID)
     info = fetch_admin_basic(admin_id)  # from admin_monitor.py
@@ -1142,6 +1140,9 @@ if parsed_full:
             gamertag = info["main_gamertag"]
         else:
             gamertag = "UNKNOWN"
+
+    if amount <= 0:
+        amount = 1
 
     # ======== Kick + ban on that server ========
     if RCON_ENABLED:
@@ -1193,9 +1194,6 @@ if parsed_full:
     dt = datetime.fromtimestamp(created_at_ts, tz=timezone.utc)
     time_str = dt.strftime("%Y-%m-%d %I:%M %p").lstrip("0")
 
-    if amount <= 0:
-        amount = 1
-
     desc_lines = [
         f"**Server:** `{server_name}`",
         f"**Gamertag:** `{gamertag}`",
@@ -1222,6 +1220,7 @@ if parsed_full:
         print(f"[SPAWN-ENFORCE] Sent alert for admin_id={admin_id}, GT={gamertag}")
     except Exception as e:
         print(f"[SPAWN-ENFORCE] Failed to send alert embed: {e}")
+}")
 
 
 
