@@ -236,6 +236,7 @@ _near_set[server_key].add(player_name)
         await asyncio.sleep(PER_COMMAND_DELAY)
 
 
+
 async def handle_printpos_console_line(server_key: str, msg_text: str) -> None:
     if not _enabled:
         return
@@ -349,6 +350,7 @@ async def _position_poll_loop() -> None:
                 _stats[server_key]["err"] += 1
 
         _log_status_if_due(server_key, True)
+
 
 
 
