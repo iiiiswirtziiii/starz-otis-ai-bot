@@ -978,13 +978,13 @@ def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str
 
     line = console_line.replace("\u0000", "").strip()
 
-    # If there's a timestamp/prefix, cut everything before [ServerVar]
+    # Cut everything before [ServerVar] if there’s a timestamp/prefix
     low = line.lower()
     idx = low.find("[servervar]")
     if idx != -1:
         line = line[idx:]
 
-    # Pattern supports:
+    # Supports:
     #  - giving NAME 9 x Rocket
     #  - giving "NAME WITH SPACES" 9 x Rocket
     #  - giving NAME 9x Rocket
@@ -1008,8 +1008,6 @@ def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str
 
     item_text = (m.group("item") or "").strip().strip(".")
     return gamertag, amount, item_text
-
-
 
 
 
@@ -1129,13 +1127,15 @@ async def handle_spawn_enforcement_for_event(
     if TRACKER_DISABLED_UNTIL and now < TRACKER_DISABLED_UNTIL:
         return
 
-    # Try to parse the line for gamertag + amount
-    parsed = _parse_spawn_from_console_line(console_line)
+    # Try to parse the line for gamertag + amount (+ item text if present)
+    parsed_full = _parse_spawn_from_console_line_full(console_line)
+
     gamertag: Optional[str] = None
     amount: int = 0
 
-    if parsed:
-        gamertag, amount = parsed
+    if parsed_full:
+        gamertag, amount, _item_text = parsed_full
+
 
     # Lookup basic info for DB / logs (gives us main GT + Discord ID)
     info = fetch_admin_basic(admin_id)  # from admin_monitor.py
