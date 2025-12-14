@@ -299,12 +299,12 @@ from nuke_rewards import (
     maybe_handle_nuke_purchase,
     get_recent_nuke_stats,
 )
-
 # ----- Teleport / printpos system -----
 from starz_printpos import (
     init_printpos_system,
     start_printpos_polling,
     handle_printpos_console_line,
+    update_connected_players,
     set_enabled as set_printpos_enabled,
     is_enabled as is_printpos_enabled,
     TPType,
@@ -312,6 +312,7 @@ from starz_printpos import (
     get_all_zones,
     clear_tp_type,
 )
+
 
 
 
