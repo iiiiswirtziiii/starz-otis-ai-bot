@@ -1345,12 +1345,13 @@ async def handle_shop_log_message(message: discord.Message) -> None:
 
 
 # ===================== RCON CONSOLE LINE HANDLER =====================
-
 async def handle_rcon_console_line(
-    server_key: str, msg_text: str, created_at_ts: float
+    server_key: str,
+    msg_text: str,
+    created_at_ts: float
 ) -> None:
     """
-    Called for each console line...
+    Called for each console line from a given server's WebRCON connection.
     """
 
     # 0) Teleport / TP zone system: let it inspect every console line
@@ -1368,51 +1369,56 @@ async def handle_rcon_console_line(
         created_at_ts=created_at_ts,
     )
 
-    # 2) Find any registered admins mentioned in this line
-    matching_admin_ids = find_matching_admin_ids_from_text(msg_text)
-    if not matching_admin_ids:
+    # 2) High-risk spawn enforcement (ONLY on real spawn/kit lines)
+    if not RCON_ENABLED:
         return
 
     server_name = server_key
+    lt = (msg_text or "").lower()
 
-    # 3) Admin monitor log update
+    # --- classify console line types ---
+    is_servervar_spawn = ("[servervar]" in lt and " giving " in lt)
+
+    # rocket-ish lines (you can expand as you learn exact formats)
+    is_rocket_spawn = (
+        (" gave " in lt and " rocket" in lt)
+        or ("added item" in lt and "rocket" in lt)
+        or ("spawned" in lt and "rocket" in lt)
+        or ("ammo.rocket" in lt)
+        or ("rocket.launcher" in lt)
+    )
+
+    is_kit_claim = ("[kitmanager]" in lt and "successfully gave" in lt)
+
+    # ✅ HARD GATE: ignore anything that isn't a real spawn/kit line
+    if not (is_servervar_spawn or is_rocket_spawn or is_kit_claim):
+        return
+
+    # ✅ REQUIRED: the /register admin name MUST be in this console line
+    admin_ids = find_matching_admin_ids_from_text(msg_text)
+    if not admin_ids:
+        return
+
+    # 3) Admin monitor log update (only when we matched a registered admin)
     await log_admin_activity_for_ids(
         bot=bot,
-        admin_ids=matching_admin_ids,
+        admin_ids=admin_ids,
         event_type="spawn",
         server_name=server_name,
         detail=msg_text,
     )
 
-    # 5) High-risk spawn enforcement (ONLY on real spawn/kit lines)
-    if not RCON_ENABLED:
-        return
-
-    lt = (msg_text or "").lower()
-
-    # ✅ HARD GATE: ignore anything that isn't a real spawn/kit line
-    is_servervar_spawn = ("[servervar]" in lt and " giving " in lt)
-    is_kit_claim = ("[kitmanager]" in lt and "successfully gave" in lt)
-
-    if not (is_servervar_spawn or is_kit_claim):
-        return
-
-    # Only bother doing admin matching on lines that are actually spawn/kit lines
-    admin_ids = find_matching_admin_ids_from_text(msg_text)
-    if not admin_ids:
-        return
-
-    # ---- Case 1: real item spawn line ----
+    # -------------------------
+    # Case 1: ServerVar spawns
+    # -------------------------
     if is_servervar_spawn:
         parsed_full = _parse_spawn_from_console_line_full(msg_text)
-
         if not parsed_full:
-            # If it says ServerVar giving but we failed to parse, log it once and stop
             print(f"[SPAWN-PARSE-FAIL] {msg_text!r}")
             return
 
         _gt, _amt, item_text = parsed_full
-        item_key = item_text.lower().strip()
+        item_key = (item_text or "").lower().strip()
 
         matched_item = None
         for hr in HIGH_RISK_SPAWN_ITEMS:
@@ -1437,11 +1443,42 @@ async def handle_rcon_console_line(
             )
         return  # stop here so we don't double-handle
 
-    # ---- Case 2: kit claim success line (KITMANAGER) ----
+    # ----------------------------------------
+    # Case 2: Rocket spawn lines (non-servervar)
+    # ----------------------------------------
+    if is_rocket_spawn:
+        # only enforce if "rocket" is actually considered high-risk
+        matched_item = None
+        for hr in HIGH_RISK_SPAWN_ITEMS:
+            if hr.lower() in lt:
+                matched_item = hr
+                break
+
+        # If your HIGH_RISK_SPAWN_ITEMS contains "rocket", this will match.
+        # If it doesn't, nothing happens (by design).
+        if not matched_item:
+            return
+
+        for admin_id in admin_ids:
+            if is_admin_immune(admin_id):
+                continue
+
+            await handle_spawn_enforcement_for_event(
+                admin_id=admin_id,
+                server_key=server_key,
+                server_name=server_name,
+                matched_item=matched_item,
+                console_line=msg_text,
+                created_at_ts=created_at_ts,
+            )
+        return
+
+    # ---------------------------
+    # Case 3: KitManager claims
+    # ---------------------------
     if is_kit_claim:
         m_kit = re.search(r"\[kitmanager\].*?\[([^\]]+)\]", msg_text, re.IGNORECASE)
         kit_name = (m_kit.group(1) if m_kit else "").strip().lower()
-
         if not kit_name:
             return
 
