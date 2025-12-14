@@ -1980,13 +1980,21 @@ async def tp_delete(interaction: discord.Interaction, tp_type: str):
     except Exception as e:
         # Always finalize the interaction so Discord doesn't stick on "thinking..."
         try:
-            await interaction.followup.send(f"❌ tp-delete failed: `{e}`", ephemeral=True)
+    try:
+        await interaction.followup.send(
+            f"✅ Deleted **{tp_enum.value}** ({removed} slot(s)) + MAIN + SPAWN zones.",
+            ephemeral=True,
+        )
+    except Exception as e:
+        # Always finalize the interaction so Discord doesn't stick on "thinking..."
+        try:
+            await interaction.followup.send(
+                f"❌ tp-delete failed: `{e}`",
+                ephemeral=True,
+            )
         except Exception:
             pass
 
-
-        ephemeral=True,
-    )
 
 
 
