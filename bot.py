@@ -326,8 +326,9 @@ from starz_printpos.tp_zones import (
 # TP / ZONE RCON CONFIG
 # ==========================
 
-# Which RCON servers should receive the zone setup commands
-ZONE_RCON_SERVER_KEYS = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10"]
+# Only send zone commands to servers that exist in RCON_CONFIGS
+ZONE_RCON_SERVER_KEYS = list(RCON_CONFIGS.keys())
+
 
 from typing import Dict, Tuple
 
