@@ -89,6 +89,10 @@ class WebRconClient:
                 return data
 
     async def send_command(self, command: str, timeout: float = 5.0) -> dict:
+        """
+        Send a command and return the matching response JSON.
+        HARD timeout so slash commands never hang forever.
+        """
         async with self._lock:
             await self.connect()
             assert self.ws is not None
@@ -96,8 +100,9 @@ class WebRconClient:
             identifier = self._next_id
             self._next_id += 1
 
-            # 🔇 Silence spam, keep important logs
-            if not _is_noisy_command(command):
+            # Optional: quiet spammy commands like server.printpos
+            quiet = command.strip().lower().startswith("server.printpos")
+            if not quiet:
                 print(f"[RCON:{self.name}] → Sending command: {command}")
 
             payload = {
@@ -111,10 +116,15 @@ class WebRconClient:
             try:
                 resp = await self._recv_until_id(identifier, timeout=timeout)
             except asyncio.TimeoutError:
-                print(f"[RCON:{self.name}] ❌ Timeout waiting for response to: {command}")
-                raise
+                # Force-close socket so next command reconnects cleanly
+                try:
+                    await self.close()
+                except Exception:
+                    pass
+                raise asyncio.TimeoutError(f"Timeout waiting for RCON response ({self.name}) for: {command}")
 
             return resp
+
 
 
 class RconManager:
@@ -220,3 +230,4 @@ async def rcon_send_all(command: str, timeout: float = 5.0) -> None:
 
     if not _is_noisy_command(command):
         print(f"[RCON] Broadcast complete for: {command!r}")
+
