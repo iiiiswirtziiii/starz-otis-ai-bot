@@ -1385,80 +1385,82 @@ async def handle_rcon_console_line(
     )
 
     # 5) High-risk spawn enforcement (ONLY on real spawn/kit lines)
-    if RCON_ENABLED:
-        admin_ids = find_matching_admin_ids_from_text(msg_text)
-        if admin_ids:
-            lt = msg_text.lower()
+    if not RCON_ENABLED:
+        return
 
-            # 🔍 DEBUG — prove what parser & text we're using
-            print(f"[SPAWN-DEBUG] parser_line={_parse_spawn_from_console_line_full.__code__.co_firstlineno}")
-            print(f"[SPAWN-DEBUG] msg_repr={msg_text!r}")
+    lt = (msg_text or "").lower()
 
-            # ✅ NEW DEBUG (MUST be INSIDE the admin_ids block)
-            if "[servervar]" in lt:
-                print(f"[SPAWN-RAW-REPR] {msg_text!r}")
-                probe = msg_text[msg_text.lower().find("giving"):][:80]
-                print("[SPAWN-RAW-PROBE]", probe, [ord(c) for c in probe])
-            import inspect
+    # ✅ HARD GATE: ignore anything that isn't a real spawn/kit line
+    is_servervar_spawn = ("[servervar]" in lt and " giving " in lt)
+    is_kit_claim = ("[kitmanager]" in lt and "successfully gave" in lt)
 
-            print("[SPAWN-DEBUG] parser_file=", inspect.getsourcefile(_parse_spawn_from_console_line_full))
-            print("[SPAWN-DEBUG] parser_line=", _parse_spawn_from_console_line_full.__code__.co_firstlineno)
+    if not (is_servervar_spawn or is_kit_claim):
+        return
 
-            # ---- Case 1: real item spawn line ----
-            parsed_full = _parse_spawn_from_console_line_full(msg_text)
+    # Only bother doing admin matching on lines that are actually spawn/kit lines
+    admin_ids = find_matching_admin_ids_from_text(msg_text)
+    if not admin_ids:
+        return
 
-            # 🔎 DEBUG: show the raw console line when parser fails
-            if parsed_full is None:
-                print(f"[SPAWN-RAW] {msg_text!r}")
+    # ---- Case 1: real item spawn line ----
+    if is_servervar_spawn:
+        parsed_full = _parse_spawn_from_console_line_full(msg_text)
 
-            print(f"[SPAWN-DEBUG] parsed_full={parsed_full}")
+        if not parsed_full:
+            # If it says ServerVar giving but we failed to parse, log it once and stop
+            print(f"[SPAWN-PARSE-FAIL] {msg_text!r}")
+            return
 
-            if parsed_full:
-                _gt, _amt, item_text = parsed_full
+        _gt, _amt, item_text = parsed_full
+        item_key = item_text.lower().strip()
 
-                item_key = item_text.lower().strip()
-                matched_item = None
-                for hr in HIGH_RISK_SPAWN_ITEMS:
-                    if hr.lower() in item_key:
-                        matched_item = hr
-                        break
+        matched_item = None
+        for hr in HIGH_RISK_SPAWN_ITEMS:
+            if hr.lower() in item_key:
+                matched_item = hr
+                break
 
-                if matched_item:
-                    for admin_id in admin_ids:
-                        if is_admin_immune(admin_id):
-                            continue
+        if not matched_item:
+            return
 
-                        await handle_spawn_enforcement_for_event(
-                            admin_id=admin_id,
-                            server_key=server_key,
-                            server_name=server_name,
-                            matched_item=matched_item,
-                            console_line=msg_text,
-                            created_at_ts=created_at_ts,
-                        )
-                    return  # stop here so we don't double-handle
+        for admin_id in admin_ids:
+            if is_admin_immune(admin_id):
+                continue
 
+            await handle_spawn_enforcement_for_event(
+                admin_id=admin_id,
+                server_key=server_key,
+                server_name=server_name,
+                matched_item=matched_item,
+                console_line=msg_text,
+                created_at_ts=created_at_ts,
+            )
+        return  # stop here so we don't double-handle
 
+    # ---- Case 2: kit claim success line (KITMANAGER) ----
+    if is_kit_claim:
+        m_kit = re.search(r"\[kitmanager\].*?\[([^\]]+)\]", msg_text, re.IGNORECASE)
+        kit_name = (m_kit.group(1) if m_kit else "").strip().lower()
 
-            # ---- Case 2: kit claim success line (KITMANAGER) ----
-            if "[kitmanager]" in lt and "successfully gave" in lt:
-                m_kit = re.search(r"\[kitmanager\].*?\[([^\]]+)\]", msg_text, re.IGNORECASE)
-                kit_name = (m_kit.group(1) if m_kit else "").strip().lower()
+        if not kit_name:
+            return
 
-                if kit_name and kit_name in {k.lower() for k in HIGH_RISK_KITS}:
-                    for admin_id in admin_ids:
-                        if is_admin_immune(admin_id):
-                            continue
+        if kit_name not in {k.lower() for k in HIGH_RISK_KITS}:
+            return
 
-                        await handle_spawn_enforcement_for_event(
-                            admin_id=admin_id,
-                            server_key=server_key,
-                            server_name=server_name,
-                            matched_item=kit_name,
-                            console_line=msg_text,
-                            created_at_ts=created_at_ts,
-                        )
-                    return
+        for admin_id in admin_ids:
+            if is_admin_immune(admin_id):
+                continue
+
+            await handle_spawn_enforcement_for_event(
+                admin_id=admin_id,
+                server_key=server_key,
+                server_name=server_name,
+                matched_item=kit_name,
+                console_line=msg_text,
+                created_at_ts=created_at_ts,
+            )
+        return
 
 
 
