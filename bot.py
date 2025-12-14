@@ -969,51 +969,47 @@ def _format_spawn_event_line(evt: Dict[str, Any]) -> str:
 def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str, int, str]]:
     """
     Extract (gamertag, amount, item_text) from Rust Console spawn lines.
-    Handles:
-      - [ServerVar] giving NAME 9 x Rocket
-      - [ServerVar] giving "NAME WITH SPACES" 9 x Rocket
-      - [ServerVar] giving NAME 9x Rocket
-      - [ServerVar] giving NAME x9 Rocket
+
+    Works even if the line has timestamps/prefixes like:
+      12/14/2025 14:37:13:LOG:  [ServerVar] giving NAME 9 x Rocket
     """
-    line = (console_line or "").replace("\u0000", "").strip()
+    if not console_line:
+        return None
 
-    # 1) 9 x Rocket
+    line = console_line.replace("\u0000", "").strip()
+
+    # If there's a timestamp/prefix, cut everything before [ServerVar]
+    low = line.lower()
+    idx = low.find("[servervar]")
+    if idx != -1:
+        line = line[idx:]
+
+    # Pattern supports:
+    #  - giving NAME 9 x Rocket
+    #  - giving "NAME WITH SPACES" 9 x Rocket
+    #  - giving NAME 9x Rocket
+    #  - giving NAME x9 Rocket
     m = re.search(
-        r'\[ServerVar\].*?giving\s+"?(.+?)"?\s+(\d+)\s*x\s+(.+)$',
+        r'\[ServerVar\]\s+giving\s+"?(?P<gt>.+?)"?\s+'
+        r'(?:(?P<a1>\d+)\s*x\s+|(?P<a2>\d+)x\s+|x(?P<a3>\d+)\s+)'
+        r'(?P<item>.+)$',
         line,
         re.IGNORECASE,
     )
-    if m:
-        gamertag = m.group(1).strip()
-        amount = int(m.group(2))
-        item_text = (m.group(3) or "").strip().strip(".")
-        return gamertag, amount, item_text
+    if not m:
+        return None
 
-    # 2) 9x Rocket
-    m = re.search(
-        r'\[ServerVar\].*?giving\s+"?(.+?)"?\s+(\d+)\s*x\s*(.+)$',
-        line,
-        re.IGNORECASE,
-    )
-    if m:
-        gamertag = m.group(1).strip()
-        amount = int(m.group(2))
-        item_text = (m.group(3) or "").strip().strip(".")
-        return gamertag, amount, item_text
+    gamertag = (m.group("gt") or "").strip()
+    amount_s = m.group("a1") or m.group("a2") or m.group("a3") or "0"
+    try:
+        amount = int(amount_s)
+    except Exception:
+        amount = 0
 
-    # 3) x9 Rocket
-    m = re.search(
-        r'\[ServerVar\].*?giving\s+"?(.+?)"?\s+x(\d+)\s+(.+)$',
-        line,
-        re.IGNORECASE,
-    )
-    if m:
-        gamertag = m.group(1).strip()
-        amount = int(m.group(2))
-        item_text = (m.group(3) or "").strip().strip(".")
-        return gamertag, amount, item_text
+    item_text = (m.group("item") or "").strip().strip(".")
+    return gamertag, amount, item_text
 
-    return None
+
 
 
 
@@ -1402,69 +1398,69 @@ async def handle_rcon_console_line(
         detail=msg_text,
     )
 
+# 5) High-risk spawn enforcement (ONLY on real spawn/kit lines)
+if RCON_ENABLED:
+    admin_ids = find_matching_admin_ids_from_text(msg_text)
+    if admin_ids:
+        lt = msg_text.lower()
 
-    # 5) High-risk spawn enforcement (ONLY on real spawn/kit lines)
-    if RCON_ENABLED:
-        admin_ids = find_matching_admin_ids_from_text(msg_text)
-        if admin_ids:
-            lt = msg_text.lower()
+        # 🔍 DEBUG — prove what parser & text we're using
+        print(f"[SPAWN-DEBUG] parser_line={_parse_spawn_from_console_line_full.__code__.co_firstlineno}")
+        print(f"[SPAWN-DEBUG] msg_repr={msg_text!r}")
 
-            # 🔍 TEMP DEBUG — show raw spawn lines
-            if "servervar" in lt or "giving" in lt:
-                print(f"[SPAWN-RAW] {msg_text}")
+        # 🔍 TEMP DEBUG — show raw spawn-ish lines
+        if "servervar" in lt or "giving" in lt:
+            print(f"[SPAWN-RAW] {msg_text}")
 
-            # ---- Case 1: real item spawn line ----
-            parsed_full = _parse_spawn_from_console_line_full(msg_text)
-            print(f"[SPAWN-DEBUG] parsed_full={parsed_full}")
+        # ---- Case 1: real item spawn line ----
+        parsed_full = _parse_spawn_from_console_line_full(msg_text)
+        print(f"[SPAWN-DEBUG] parsed_full={parsed_full}")
 
-            if parsed_full:
-                _gt, _amt, item_text = parsed_full
+        if parsed_full:
+            _gt, _amt, item_text = parsed_full
 
-                item_key = item_text.lower().strip()
-                matched_item = None
-                for hr in HIGH_RISK_SPAWN_ITEMS:
-                    if hr.lower() in item_key:
-                        matched_item = hr
-                        break
+            item_key = item_text.lower().strip()
+            matched_item = None
+            for hr in HIGH_RISK_SPAWN_ITEMS:
+                if hr.lower() in item_key:
+                    matched_item = hr
+                    break
 
-                if matched_item:
-                    for admin_id in admin_ids:
-                        if is_admin_immune(admin_id):
-                            continue
+            if matched_item:
+                for admin_id in admin_ids:
+                    if is_admin_immune(admin_id):
+                        continue
 
-                        await handle_spawn_enforcement_for_event(
-                            admin_id=admin_id,
-                            server_key=server_key,
-                            server_name=server_name,
-                            matched_item=matched_item,
-                            console_line=msg_text,
-                            created_at_ts=created_at_ts,
-                        )
-                    return
+                    await handle_spawn_enforcement_for_event(
+                        admin_id=admin_id,
+                        server_key=server_key,
+                        server_name=server_name,
+                        matched_item=matched_item,
+                        console_line=msg_text,
+                        created_at_ts=created_at_ts,
+                    )
+                return  # stop here so we don't double-handle
 
-            # ---- Case 2: kit claim success line (KITMANAGER) ----
-            if "[kitmanager]" in lt and "successfully gave" in lt:
-                m_kit = re.search(
-                    r"\[kitmanager\].*?\[([^\]]+)\]",
-                    msg_text,
-                    re.IGNORECASE,
-                )
-                kit_name = (m_kit.group(1) if m_kit else "").strip().lower()
+        # ---- Case 2: kit claim success line (KITMANAGER) ----
+        if "[kitmanager]" in lt and "successfully gave" in lt:
+            m_kit = re.search(r"\[kitmanager\].*?\[([^\]]+)\]", msg_text, re.IGNORECASE)
+            kit_name = (m_kit.group(1) if m_kit else "").strip().lower()
 
-                if kit_name and kit_name in {k.lower() for k in HIGH_RISK_KITS}:
-                    for admin_id in admin_ids:
-                        if is_admin_immune(admin_id):
-                            continue
+            if kit_name and kit_name in {k.lower() for k in HIGH_RISK_KITS}:
+                for admin_id in admin_ids:
+                    if is_admin_immune(admin_id):
+                        continue
 
-                        await handle_spawn_enforcement_for_event(
-                            admin_id=admin_id,
-                            server_key=server_key,
-                            server_name=server_name,
-                            matched_item=kit_name,
-                            console_line=msg_text,
-                            created_at_ts=created_at_ts,
-                        )
-                    return
+                    await handle_spawn_enforcement_for_event(
+                        admin_id=admin_id,
+                        server_key=server_key,
+                        server_name=server_name,
+                        matched_item=kit_name,
+                        console_line=msg_text,
+                        created_at_ts=created_at_ts,
+                    )
+                return
+
 
 
 async def rcon_console_watch(server_key: str, host: str, port: int, password: str):
