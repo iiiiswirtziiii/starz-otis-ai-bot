@@ -380,7 +380,12 @@ if not DISCORD_BOT_TOKEN:
 if not OPENAI_API_KEY:
     raise SystemExit("OPENAI_API_KEY is not set.")
 
-client_ai = OpenAI(api_key=OPENAI_API_KEY)
+client_ai = OpenAI(
+    api_key=OPENAI_API_KEY,
+    timeout=30.0,   # Railway/network can be a little slow sometimes
+    max_retries=3,  # built-in retry for transient connection issues
+)
+
 
 intents = discord.Intents.default()
 intents.message_content = True
