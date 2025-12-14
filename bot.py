@@ -1966,13 +1966,20 @@ async def tp_delete(interaction: discord.Interaction, tp_type: str):
         for cmd in cmds:
             try:
                 print(f"[TP-DELETE:{server_key}] {cmd}")
-                await tp_send_rcon(server_key, cmd)
+                await asyncio.wait_for(tp_send_rcon(server_key, cmd), timeout=6.0)
             except Exception as e:
                 print(f"[TP-DELETE:{server_key}] Failed: {cmd!r}: {e}")
             await asyncio.sleep(0.1)
 
     await interaction.followup.send(
         f"✅ Deleted **{tp_enum.value}** ({removed} slot(s)) + MAIN + SPAWN zones.",
+            except Exception as e:
+        # Always finalize the interaction so Discord doesn't stick on "thinking..."
+        try:
+            await interaction.followup.send(f"❌ tp-delete failed: `{e}`", ephemeral=True)
+        except Exception:
+            pass
+
         ephemeral=True,
     )
 
@@ -2027,6 +2034,7 @@ async def tp_set_zone(
         return
 
     await interaction.response.defer(ephemeral=True)
+    try:
 
     # Convert choice -> TPType enum
     tp_enum = TPType(tp_type.value)
