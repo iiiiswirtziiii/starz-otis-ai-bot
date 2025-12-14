@@ -971,20 +971,21 @@ def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str
     """
     Extract (gamertag, amount, item_text) from a line like:
         [ServerVar] giving CPTA1N 6 x MLRS Rocket
-    Returns None if it doesn't match.
+    Works even if gamertag contains spaces.
     """
     m = re.search(
-        r"\[ServerVar\]\s+giving\s+(\S+)\s+(\d+)\s+x\s+(.+)$",
+        r"\[ServerVar\]\s+giving\s+(.+?)\s+(\d+)\s+x\s+(.+)$",
         console_line,
         re.IGNORECASE,
     )
     if not m:
         return None
 
-    gamertag = m.group(1).strip()
+    gamertag = (m.group(1) or "").strip().strip('"').strip("'")
+
     try:
         amount = int(m.group(2))
-    except ValueError:
+    except Exception:
         amount = 0
 
     item_text = (m.group(3) or "").strip().strip(".")
@@ -1127,10 +1128,7 @@ async def handle_spawn_enforcement_for_event(
 
     # ======== Kick + ban on that server ========
     if RCON_ENABLED:
-        reason = (
-            f"High-risk admin spawn: {matched_item} x{amount} "
-            f"on {server_name}"
-        )
+        reason = f"High-risk admin spawn: {matched_item} x{amount} on {server_name}"
 
         try:
             # 1) KICK from that server
@@ -1138,9 +1136,7 @@ async def handle_spawn_enforcement_for_event(
                 f'kick "{gamertag}" "FLAGGED ADMIN SPAWN (C4/Rockets/MLRS)"',
                 client_key=server_key,
             )
-            print(
-                f"[SPAWN-ENFORCE] Kicked {gamertag} on {server_key} for flagged spawn."
-            )
+            print(f"[SPAWN-ENFORCE] Kicked {gamertag} on {server_key} for flagged spawn.")
         except Exception as e:
             print(f"[SPAWN-ENFORCE] Kick failed for {gamertag}: {e}")
 
@@ -1162,35 +1158,24 @@ async def handle_spawn_enforcement_for_event(
 
         try:
             # 3) IN-GAME BAN via RCON (Rust Console Edition uses banid)
-            ban_cmd = (
-                f'banid "{gamertag}" '
-                f'"FLAGGED ADMIN SPAWN (C4/Rockets/MLRS)"'
-            )
+            ban_cmd = f'banid "{gamertag}" "FLAGGED ADMIN SPAWN (C4/Rockets/MLRS)"'
             await run_rcon_command(ban_cmd, client_key=server_key)
-            print(
-                f"[SPAWN-ENFORCE] Sent in-game ban command for {gamertag} on "
-                f"{server_key}: {ban_cmd}"
-            )
+            print(f"[SPAWN-ENFORCE] Sent in-game ban command for {gamertag} on {server_key}: {ban_cmd}")
         except Exception as e:
             print(f"[SPAWN-ENFORCE] RCON ban failed for {gamertag}: {e}")
 
     # ======== Build & send review embed ========
-    # Try to get nicer profile info for embed
     profile = get_admin_profile(admin_id)
     embed_discord_id = profile["discord_id"] if profile else discord_id
 
     channel = bot.get_channel(ADMIN_ENFORCEMENT_CHANNEL_ID)
     if not isinstance(channel, discord.TextChannel):
-        print(
-            f"[SPAWN-ENFORCE] Enforcement channel {ADMIN_ENFORCEMENT_CHANNEL_ID} not found."
-        )
+        print(f"[SPAWN-ENFORCE] Enforcement channel {ADMIN_ENFORCEMENT_CHANNEL_ID} not found.")
         return
 
     dt = datetime.fromtimestamp(created_at_ts, tz=timezone.utc)
     time_str = dt.strftime("%Y-%m-%d %I:%M %p").lstrip("0")
 
-    # If we couldn't parse an amount (kits), assume 1 for display
-    # If we couldn't parse an amount (kits), assume 1 for display
     if amount <= 0:
         amount = 1
 
@@ -1210,7 +1195,6 @@ async def handle_spawn_enforcement_for_event(
         timestamp=dt,
     )
 
-
     if embed_discord_id:
         embed.add_field(name="Admin", value=f"<@{embed_discord_id}>", inline=False)
 
@@ -1221,6 +1205,7 @@ async def handle_spawn_enforcement_for_event(
         print(f"[SPAWN-ENFORCE] Sent alert for admin_id={admin_id}, GT={gamertag}")
     except Exception as e:
         print(f"[SPAWN-ENFORCE] Failed to send alert embed: {e}")
+
 
 
 # ===================== ADMIN MONITOR =====================
