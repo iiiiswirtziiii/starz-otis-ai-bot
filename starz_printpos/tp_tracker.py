@@ -193,6 +193,7 @@ def update_connected_players(server_key: str, players: list) -> None:
     names = list(dict.fromkeys(n for n in names if n))
     now_ts = time.time()
 
+    # Empty server → sleep + clear queues
     if not names:
         _empty_server_until[server_key] = now_ts + EMPTY_SERVER_COOLDOWN_SECONDS
         _poll_queues[server_key].clear()
@@ -205,19 +206,23 @@ def update_connected_players(server_key: str, players: list) -> None:
 
     online = set(names)
 
+    # purge offline cooldowns
     for (sk, pname) in list(_cooldown_until.keys()):
         if sk == server_key and pname not in online:
             _cooldown_until.pop((sk, pname), None)
 
+    # rebuild READY
     q = _poll_queues[server_key]
     q.clear()
     _ready_set[server_key].clear()
 
     for n in names:
+        # only enqueue if not currently on cooldown
         if now_ts >= _cooldown_until.get((server_key, n), 0.0):
             q.append(n)
             _ready_set[server_key].add(n)
 
+    # clean expired (keep only online + not already ready)
     expq = _expired_queues[server_key]
     kept = deque()
     _expired_set[server_key].clear()
@@ -227,6 +232,13 @@ def update_connected_players(server_key: str, players: list) -> None:
             _expired_set[server_key].add(n)
     expq.clear()
     expq.extend(kept)
+
+    # OPTIONAL (if you switch to per-server workers): start worker for this server now
+    # try:
+    #     if server_key not in _server_poll_tasks or _server_poll_tasks[server_key].done():
+    #         _server_poll_tasks[server_key] = asyncio.get_event_loop().create_task(_position_poll_worker(server_key))
+    # except Exception:
+    #     pass
 
 
 
@@ -330,5 +342,6 @@ def start_printpos_polling() -> None:
     if not _position_poll_loop.is_running():
         _position_poll_loop.start()
         print("[STARZ-PRINTPOS] Position polling loop started.")
+
 
 
