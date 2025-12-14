@@ -29,6 +29,7 @@ PRINTPOS_VERBOSE_LOGS: bool = False
 # TP / TELEPORT
 # ===============================
 TP_ZONE_COOLDOWN: float = 3.0
+TP_TRIGGER_RADIUS: float = 1.15
 
 TELEPORT_COMMAND_TEMPLATE = 'teleportpos "{x},{y},{z}" "{player_name}"'
 
@@ -36,3 +37,4 @@ TP_ZONES_JSON_PATH: str = os.path.join(
     os.path.dirname(__file__),
     "tp_zones.json",
 )
+
