@@ -420,7 +420,7 @@ JOIN_DEDUP_WINDOW_SECONDS = 60  # treat joins within 60s as duplicates
 
 # ============= ADMIN SPAWN ENFORCEMENT STATE =============
 
-# How long to buffer rockets/C4 spawns before sending one combined alert
+# How long to buffer rocket/C4 spawns before sending one combined alert
 SPAWN_ENFORCEMENT_WINDOW_SECONDS = 10
 
 # admin_id -> list of spawn events in the last window
@@ -887,7 +887,7 @@ class BanDecisionView(discord.ui.View):
             )
 
         # Use your existing ban helper, track in DB + RCON
-        reason = "Admin spawned high-risk items (rockets / C4 / MLRS)."
+        reason = "Admin spawned high-risk items (rocket / C4 / MLRS)."
         await perform_ban(
             gamertag=self.gamertag,
             discord_user=None,
@@ -1032,7 +1032,7 @@ class AdminSpawnAlertView(discord.ui.View):
     ):
         await interaction.response.defer(ephemeral=True)
 
-        reason_text = "Admin spawned high-risk items (C4 / rockets / MLRS)."
+        reason_text = "Admin spawned high-risk items (C4 / rocket / MLRS)."
         try:
             await perform_ban(
                 gamertag=self.gamertag,
@@ -1147,7 +1147,7 @@ async def handle_spawn_enforcement_for_event(
         try:
             # 1) KICK from that server
             await run_rcon_command(
-                f'kick "{gamertag}" "FLAGGED ADMIN SPAWN (C4/Rockets/MLRS)"',
+                f'kick "{gamertag}" "FLAGGED ADMIN SPAWN (C4/Rocket/MLRS)"',
                 client_key=server_key,
             )
             print(f"[SPAWN-ENFORCE] Kicked {gamertag} on {server_key} for flagged spawn.")
@@ -1172,7 +1172,7 @@ async def handle_spawn_enforcement_for_event(
 
         try:
             # 3) IN-GAME BAN via RCON (Rust Console Edition uses banid)
-            ban_cmd = f'banid "{gamertag}" "FLAGGED ADMIN SPAWN (C4/Rockets/MLRS)"'
+            ban_cmd = f'banid "{gamertag}" "FLAGGED ADMIN SPAWN (C4/Rocket/MLRS)"'
             await run_rcon_command(ban_cmd, client_key=server_key)
             print(f"[SPAWN-ENFORCE] Sent in-game ban command for {gamertag} on {server_key}: {ban_cmd}")
         except Exception as e:
@@ -2630,7 +2630,7 @@ async def slash_reduceoffense(
 
 @bot.tree.command(
     name="disable-tracker",
-    description="Temporarily disable admin spawn tracker alerts (rockets / C4 / MLRS).",
+    description="Temporarily disable admin spawn tracker alerts (rocket / C4 / MLRS).",
 )
 @app_commands.describe(
     confirm='Type "YES" to confirm disabling the tracker.',
@@ -2676,7 +2676,7 @@ async def disable_tracker_slash(
 
     await interaction.response.send_message(
         f"⏸️ Admin spawn tracker **DISABLED** {human}. "
-        f"Flagged rockets/C4/MLRS spawns will **not** trigger alerts or bans.",
+        f"Flagged rocket/C4/MLRS spawns will **not** trigger alerts or bans.",
         ephemeral=True,
     )
 
@@ -2706,7 +2706,7 @@ async def enable_spawn_tracker_slash(interaction: discord.Interaction):
 
     TRACKER_DISABLED_UNTIL = None
     await interaction.response.send_message(
-        "▶️ Admin spawn tracker **ENABLED**. Flagged rockets/C4/MLRS spawns will "
+        "▶️ Admin spawn tracker **ENABLED**. Flagged rocket/C4/MLRS spawns will "
         "again trigger alerts and ban/unban buttons.",
         ephemeral=True,
     )
