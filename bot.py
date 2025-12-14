@@ -1375,6 +1375,43 @@ async def handle_rcon_console_line(
 
     lt = (msg_text or "").lower()
     server_name = server_key
+# ===============================
+# HARD FAILSAFE ROCKET ENFORCEMENT
+# ===============================
+
+ROCKET_KEYWORDS = (
+    "inventory.give",
+    "rocket",
+    "rocket_basic",
+    "rocket_hv",
+    "ammo.rocket",
+    "rocket.launcher",
+)
+
+# If ANY rocket-related keyword appears, we enforce
+if any(k in lt for k in ROCKET_KEYWORDS):
+
+    # Match against REGISTERED admin names (/register system)
+    admin_ids = find_matching_admin_ids_from_text(msg_text)
+    if not admin_ids:
+        return  # rocket but not a registered admin
+
+    print(f"[ROCKET-ENFORCE] Detected rocket activity: {msg_text!r}")
+
+    for admin_id in admin_ids:
+        if is_admin_immune(admin_id):
+            continue
+
+        await handle_spawn_enforcement_for_event(
+            admin_id=admin_id,
+            server_key=server_key,
+            server_name=server_key,
+            matched_item="rocket",
+            console_line=msg_text,
+            created_at_ts=created_at_ts,
+        )
+
+    return  # HARD STOP — no double handling
 
     # -----------------------------
     # Classify: spawn/kit line types
