@@ -1381,13 +1381,12 @@ async def handle_rcon_console_line(
         created_at_ts=created_at_ts,
     )
 
-
     # 2) Find any registered admins mentioned in this line
     matching_admin_ids = find_matching_admin_ids_from_text(msg_text)
     if not matching_admin_ids:
         return
-    server_name = server_key
 
+    server_name = server_key
 
     # 3) Admin monitor log update
     await log_admin_activity_for_ids(
@@ -1398,68 +1397,69 @@ async def handle_rcon_console_line(
         detail=msg_text,
     )
 
-# 5) High-risk spawn enforcement (ONLY on real spawn/kit lines)
-if RCON_ENABLED:
-    admin_ids = find_matching_admin_ids_from_text(msg_text)
-    if admin_ids:
-        lt = msg_text.lower()
+    # 5) High-risk spawn enforcement (ONLY on real spawn/kit lines)
+    if RCON_ENABLED:
+        admin_ids = find_matching_admin_ids_from_text(msg_text)
+        if admin_ids:
+            lt = msg_text.lower()
 
-        # 🔍 DEBUG — prove what parser & text we're using
-        print(f"[SPAWN-DEBUG] parser_line={_parse_spawn_from_console_line_full.__code__.co_firstlineno}")
-        print(f"[SPAWN-DEBUG] msg_repr={msg_text!r}")
+            # 🔍 DEBUG — prove what parser & text we're using
+            print(f"[SPAWN-DEBUG] parser_line={_parse_spawn_from_console_line_full.__code__.co_firstlineno}")
+            print(f"[SPAWN-DEBUG] msg_repr={msg_text!r}")
 
-        # 🔍 TEMP DEBUG — show raw spawn-ish lines
-        if "servervar" in lt or "giving" in lt:
-            print(f"[SPAWN-RAW] {msg_text}")
+            # 🔍 TEMP DEBUG — show raw spawn-ish lines
+            if "servervar" in lt or "giving" in lt:
+                print(f"[SPAWN-RAW] {msg_text}")
 
-        # ---- Case 1: real item spawn line ----
-        parsed_full = _parse_spawn_from_console_line_full(msg_text)
-        print(f"[SPAWN-DEBUG] parsed_full={parsed_full}")
+            # ---- Case 1: real item spawn line ----
+            parsed_full = _parse_spawn_from_console_line_full(msg_text)
+            print(f"[SPAWN-DEBUG] parsed_full={parsed_full}")
 
-        if parsed_full:
-            _gt, _amt, item_text = parsed_full
+            if parsed_full:
+                _gt, _amt, item_text = parsed_full
 
-            item_key = item_text.lower().strip()
-            matched_item = None
-            for hr in HIGH_RISK_SPAWN_ITEMS:
-                if hr.lower() in item_key:
-                    matched_item = hr
-                    break
+                item_key = item_text.lower().strip()
+                matched_item = None
+                for hr in HIGH_RISK_SPAWN_ITEMS:
+                    if hr.lower() in item_key:
+                        matched_item = hr
+                        break
 
-            if matched_item:
-                for admin_id in admin_ids:
-                    if is_admin_immune(admin_id):
-                        continue
+                if matched_item:
+                    for admin_id in admin_ids:
+                        if is_admin_immune(admin_id):
+                            continue
 
-                    await handle_spawn_enforcement_for_event(
-                        admin_id=admin_id,
-                        server_key=server_key,
-                        server_name=server_name,
-                        matched_item=matched_item,
-                        console_line=msg_text,
-                        created_at_ts=created_at_ts,
-                    )
-                return  # stop here so we don't double-handle
+                        await handle_spawn_enforcement_for_event(
+                            admin_id=admin_id,
+                            server_key=server_key,
+                            server_name=server_name,
+                            matched_item=matched_item,
+                            console_line=msg_text,
+                            created_at_ts=created_at_ts,
+                        )
+                    return  # stop here so we don't double-handle
 
-        # ---- Case 2: kit claim success line (KITMANAGER) ----
-        if "[kitmanager]" in lt and "successfully gave" in lt:
-            m_kit = re.search(r"\[kitmanager\].*?\[([^\]]+)\]", msg_text, re.IGNORECASE)
-            kit_name = (m_kit.group(1) if m_kit else "").strip().lower()
+            # ---- Case 2: kit claim success line (KITMANAGER) ----
+            if "[kitmanager]" in lt and "successfully gave" in lt:
+                m_kit = re.search(r"\[kitmanager\].*?\[([^\]]+)\]", msg_text, re.IGNORECASE)
+                kit_name = (m_kit.group(1) if m_kit else "").strip().lower()
 
-            if kit_name and kit_name in {k.lower() for k in HIGH_RISK_KITS}:
-                for admin_id in admin_ids:
-                    if is_admin_immune(admin_id):
-                        continue
+                if kit_name and kit_name in {k.lower() for k in HIGH_RISK_KITS}:
+                    for admin_id in admin_ids:
+                        if is_admin_immune(admin_id):
+                            continue
 
-                    await handle_spawn_enforcement_for_event(
-                        admin_id=admin_id,
-                        server_key=server_key,
-                        server_name=server_name,
-                        matched_item=kit_name,
-                        console_line=msg_text,
-                        created_at_ts=created_at_ts,
-                    )
-                return
+                        await handle_spawn_enforcement_for_event(
+                            admin_id=admin_id,
+                            server_key=server_key,
+                            server_name=server_name,
+                            matched_item=kit_name,
+                            console_line=msg_text,
+                            created_at_ts=created_at_ts,
+                        )
+                    return
+
 
 
 
