@@ -970,29 +970,24 @@ def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str
     """
     Extract (gamertag, amount, item_text) from Rust Console spawn lines.
 
-    Works even if the line has timestamps/prefixes like:
+    Handles prefixes like:
       12/14/2025 14:37:13:LOG:  [ServerVar] giving NAME 9 x Rocket
     """
     if not console_line:
         return None
 
-    line = console_line.replace("\u0000", "").strip()
+    line = str(console_line).replace("\u0000", "").strip()
 
-    # Cut everything before [ServerVar] if there’s a timestamp/prefix
+    # Cut everything before [ServerVar] (handles timestamps/prefixes)
     low = line.lower()
     idx = low.find("[servervar]")
     if idx != -1:
         line = line[idx:]
 
-    # Supports:
-    #  - giving NAME 9 x Rocket
-    #  - giving "NAME WITH SPACES" 9 x Rocket
-    #  - giving NAME 9x Rocket
-    #  - giving NAME x9 Rocket
+    # SUPER strict + reliable for your real line:
+    # [ServerVar] giving NAME 9 x Rocket
     m = re.search(
-        r'\[ServerVar\]\s+giving\s+"?(?P<gt>.+?)"?\s+'
-        r'(?:(?P<a1>\d+)\s*x\s+|(?P<a2>\d+)x\s+|x(?P<a3>\d+)\s+)'
-        r'(?P<item>.+)$',
+        r"\[ServerVar\]\s+giving\s+(?P<gt>\S+)\s+(?P<amt>\d+)\s*x\s*(?P<item>.+)$",
         line,
         re.IGNORECASE,
     )
@@ -1000,9 +995,8 @@ def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str
         return None
 
     gamertag = (m.group("gt") or "").strip()
-    amount_s = m.group("a1") or m.group("a2") or m.group("a3") or "0"
     try:
-        amount = int(amount_s)
+        amount = int(m.group("amt") or "0")
     except Exception:
         amount = 0
 
@@ -1127,14 +1121,14 @@ async def handle_spawn_enforcement_for_event(
     if TRACKER_DISABLED_UNTIL and now < TRACKER_DISABLED_UNTIL:
         return
 
-    # Try to parse the line for gamertag + amount (+ item text if present)
-    parsed_full = _parse_spawn_from_console_line_full(console_line)
+# Try to parse the line for gamertag + amount (FULL parser)
+parsed_full = _parse_spawn_from_console_line_full(console_line)
+gamertag: Optional[str] = None
+amount: int = 0
 
-    gamertag: Optional[str] = None
-    amount: int = 0
+if parsed_full:
+    gamertag, amount, _item_text = parsed_full
 
-    if parsed_full:
-        gamertag, amount, _item_text = parsed_full
 
 
     # Lookup basic info for DB / logs (gives us main GT + Discord ID)
