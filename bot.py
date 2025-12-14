@@ -305,7 +305,6 @@ from starz_printpos import (
     init_printpos_system,
     start_printpos_polling,
     handle_printpos_console_line,
-    update_connected_players,
     set_enabled as set_printpos_enabled,
     is_enabled as is_printpos_enabled,
     TPType,
@@ -313,6 +312,8 @@ from starz_printpos import (
     get_all_zones,
     clear_tp_type,
 )
+
+
 
 from starz_printpos.tp_zones import (
     get_configured_tp_types,
