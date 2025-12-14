@@ -2,9 +2,11 @@ from .tp_tracker import (
     init_printpos_system,
     start_printpos_polling,
     handle_printpos_console_line,
+    update_connected_players,
     set_enabled,
     is_enabled,
 )
+
 
 from .tp_zones import (
     TPType,
@@ -17,3 +19,4 @@ from .tp_zones import (
     get_configured_slots,
     DEFAULT_ZONE_COLORS,
 )
+
