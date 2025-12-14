@@ -1348,13 +1348,13 @@ async def handle_shop_log_message(message: discord.Message) -> None:
 async def handle_rcon_console_line(
     server_key: str,
     msg_text: str,
-    created_at_ts: float
+    created_at_ts: float,
 ) -> None:
     """
     Called for each console line from a given server's WebRCON connection.
     """
 
-    # 0) Teleport / TP zone system: let it inspect every console line
+    # 0) TP/printpos: can inspect every line (already safe-guarded in watcher too)
     try:
         if is_printpos_enabled():
             await handle_printpos_console_line(server_key, msg_text)
@@ -1369,138 +1369,89 @@ async def handle_rcon_console_line(
         created_at_ts=created_at_ts,
     )
 
-    # 2) Enforcement requires RCON enabled
+    # 2) High-risk enforcement uses RCON toggle
     if not RCON_ENABLED:
         return
 
     lt = (msg_text or "").lower()
     server_name = server_key
-# ===============================
-# HARD FAILSAFE ROCKET ENFORCEMENT
-# ===============================
-
-ROCKET_KEYWORDS = (
-    "inventory.give",
-    "rocket",
-    "rocket_basic",
-    "rocket_hv",
-    "ammo.rocket",
-    "rocket.launcher",
-)
-
-# If ANY rocket-related keyword appears, we enforce
-if any(k in lt for k in ROCKET_KEYWORDS):
-
-    # Match against REGISTERED admin names (/register system)
-    admin_ids = find_matching_admin_ids_from_text(msg_text)
-    if not admin_ids:
-        return  # rocket but not a registered admin
-
-    print(f"[ROCKET-ENFORCE] Detected rocket activity: {msg_text!r}")
-
-    for admin_id in admin_ids:
-        if is_admin_immune(admin_id):
-            continue
-
-        await handle_spawn_enforcement_for_event(
-            admin_id=admin_id,
-            server_key=server_key,
-            server_name=server_key,
-            matched_item="rocket",
-            console_line=msg_text,
-            created_at_ts=created_at_ts,
-        )
-
-    return  # HARD STOP — no double handling
 
     # -----------------------------
-    # Classify: spawn/kit line types
+    # ✅ HARD GATE: only real spawn/kit lines
     # -----------------------------
     is_servervar_spawn = ("[servervar]" in lt and " giving " in lt)
-    is_kit_claim = ("[kitmanager]" in lt and "successfully gave" in lt)
 
-    # Some servers/plugins log rockets/C4 in non-ServerVar ways
+    # some servers/loggers format rockets differently; keep this wide
     is_rocket_spawn = (
-        (" gave " in lt and "rocket" in lt)
+        (" gave " in lt and " rocket" in lt)
         or ("added item" in lt and "rocket" in lt)
         or ("spawned" in lt and "rocket" in lt)
+        or ("giving " in lt and "rocket" in lt)
     )
 
-    # ✅ HARD GATE: ignore anything that isn't a real spawn/kit line
+    is_kit_claim = ("[kitmanager]" in lt and "successfully gave" in lt)
+
     if not (is_servervar_spawn or is_rocket_spawn or is_kit_claim):
         return
 
-    # ---------------------------------------------------------
-    # Extract the *target gamertag* from the console line
-    # This is how we ensure it includes the /register name.
-    # ---------------------------------------------------------
-    candidate_names: list[str] = []
-
-    # [ServerVar] SERVER giving realyyAk kit Elitekit6
-    # [ServerVar] giving CPTA1N 6 x MLRS Rocket   (some formats)
-    m_sv = re.search(r"\[servervar\].*?\bgiving\s+([^\s]+)", msg_text, re.IGNORECASE)
-    if m_sv:
-        candidate_names.append(m_sv.group(1).strip())
-
-    # [KITMANAGER] Successfully gave [Elitekit6] to [realyyAk]
-    m_km = re.search(r"\[kitmanager\].*?\bto\s+\[([^\]]+)\]", msg_text, re.IGNORECASE)
-    if m_km:
-        candidate_names.append(m_km.group(1).strip())
-
-    # Fallback: sometimes names appear quoted in commands:  ... "Name Here" ...
-    # (only use if we have nothing else)
-    if not candidate_names:
-        m_q = re.findall(r"\"([^\"]{2,32})\"", msg_text)
-        for q in m_q:
-            # ignore obvious non-names
-            if " " in q or q.isdigit():
-                continue
-            candidate_names.append(q.strip())
-
-    # Normalize + dedupe
-    candidate_names = [n for n in dict.fromkeys(candidate_names) if n]
-
-    # Find registered admin IDs ONLY based on extracted gamertag text
-    # (this is your "must include /register admin name" requirement)
-    admin_ids: set[int] = set()
-    for name in candidate_names:
-        for aid in find_matching_admin_ids_from_text(name):
-            admin_ids.add(aid)
-
+    # -----------------------------
+    # ✅ THIS IS THE IMPORTANT PART:
+    # only trigger if the line contains a REGISTERED admin (/register)
+    # -----------------------------
+    admin_ids = find_matching_admin_ids_from_text(msg_text)
     if not admin_ids:
-        # If we can't tie the spawn to a REGISTERED admin name, do nothing.
+        # not a registered admin line => do nothing
         return
 
-    # 3) Log the spawn event for those admins
+    # 3) Admin monitor log update (only for real spawn/kit lines)
     await log_admin_activity_for_ids(
         bot=bot,
-        admin_ids=list(admin_ids),
+        admin_ids=admin_ids,
         event_type="spawn",
         server_name=server_name,
         detail=msg_text,
     )
 
-    # 4) Determine matched high-risk item
-    matched_item: str | None = None
-
+    # -------------------------
+    # Case 1: ServerVar spawns
+    # -------------------------
     if is_servervar_spawn:
         parsed_full = _parse_spawn_from_console_line_full(msg_text)
-        if parsed_full:
-            _gt, _amt, item_text = parsed_full
-            item_key = (item_text or "").lower().strip()
-            for hr in HIGH_RISK_SPAWN_ITEMS:
-                if hr.lower() in item_key:
-                    matched_item = hr
-                    break
-        else:
-            # If parse fails, still allow substring detection
-            for hr in HIGH_RISK_SPAWN_ITEMS:
-                if hr.lower() in lt:
-                    matched_item = hr
-                    break
+        if not parsed_full:
+            print(f"[SPAWN-PARSE-FAIL] {msg_text!r}")
+            return
 
-    elif is_rocket_spawn:
-        # Rocket-ish: match configured high-risk items first, else fallback to "rocket"
+        _gt, _amt, item_text = parsed_full
+        item_key = (item_text or "").lower().strip()
+
+        matched_item = None
+        for hr in HIGH_RISK_SPAWN_ITEMS:
+            if hr.lower() in item_key:
+                matched_item = hr
+                break
+
+        if not matched_item:
+            return
+
+        for admin_id in admin_ids:
+            if is_admin_immune(admin_id):
+                continue
+
+            await handle_spawn_enforcement_for_event(
+                admin_id=admin_id,
+                server_key=server_key,
+                server_name=server_name,
+                matched_item=matched_item,
+                console_line=msg_text,
+                created_at_ts=created_at_ts,
+            )
+        return
+
+    # ----------------------------------------
+    # Case 2: Non-ServerVar rocket-ish lines
+    # ----------------------------------------
+    if is_rocket_spawn:
+        matched_item = None
         for hr in HIGH_RISK_SPAWN_ITEMS:
             if hr.lower() in lt:
                 matched_item = hr
@@ -1508,30 +1459,45 @@ if any(k in lt for k in ROCKET_KEYWORDS):
         if not matched_item:
             matched_item = "rocket"
 
-    elif is_kit_claim:
-        m_kit = re.search(r"\[kitmanager\].*?\[([^\]]+)\]", msg_text, re.IGNORECASE)
-        kit_name = (m_kit.group(1) if m_kit else "").strip().lower()
-        if kit_name and kit_name in {k.lower() for k in HIGH_RISK_KITS}:
-            matched_item = kit_name
+        for admin_id in admin_ids:
+            if is_admin_immune(admin_id):
+                continue
 
-    if not matched_item:
+            await handle_spawn_enforcement_for_event(
+                admin_id=admin_id,
+                server_key=server_key,
+                server_name=server_name,
+                matched_item=matched_item,
+                console_line=msg_text,
+                created_at_ts=created_at_ts,
+            )
         return
 
-    # 5) Enforce (kick/ban/etc) for each matched admin
-    for admin_id in admin_ids:
-        if is_admin_immune(admin_id):
-            continue
+    # ---------------------------
+    # Case 3: KitManager claims
+    # ---------------------------
+    if is_kit_claim:
+        m_kit = re.search(r"\[kitmanager\].*?\[([^\]]+)\]", msg_text, re.IGNORECASE)
+        kit_name = (m_kit.group(1) if m_kit else "").strip().lower()
+        if not kit_name:
+            return
 
-        await handle_spawn_enforcement_for_event(
-            admin_id=admin_id,
-            server_key=server_key,
-            server_name=server_name,
-            matched_item=matched_item,
-            console_line=msg_text,
-            created_at_ts=created_at_ts,
-        )
+        if kit_name not in {k.lower() for k in HIGH_RISK_KITS}:
+            return
 
+        for admin_id in admin_ids:
+            if is_admin_immune(admin_id):
+                continue
 
+            await handle_spawn_enforcement_for_event(
+                admin_id=admin_id,
+                server_key=server_key,
+                server_name=server_name,
+                matched_item=kit_name,
+                console_line=msg_text,
+                created_at_ts=created_at_ts,
+            )
+        return
 
 
 
@@ -1568,7 +1534,6 @@ async def rcon_console_watch(server_key: str, host: str, port: int, password: st
                     set_printpos_enabled(True)
                 except Exception:
                     pass
-
                 async for raw in ws:
                     # 1) Parse JSON safely
                     try:
@@ -1584,7 +1549,7 @@ async def rcon_console_watch(server_key: str, host: str, port: int, password: st
 
                         ident = data.get("Identifier")
 
-                        # Let printpos see response lines too (ident != 0)
+                        # Let printpos see response lines too (ident != 0)…
                         if ident not in (0, None):
                             try:
                                 if is_printpos_enabled():
@@ -1592,7 +1557,8 @@ async def rcon_console_watch(server_key: str, host: str, port: int, password: st
                             except Exception as e:
                                 print(f"[PRINTPOS:{server_key}] error handling ident!=0 line: {e}")
 
-                        # ✅ IMPORTANT: DO NOT continue — we still want enforcement/admin logic to see it
+                        # ✅ IMPORTANT: DO NOT continue here.
+                        # We still pass ALL lines to the main handler so enforcement can see them.
                         created_at_ts = time.time()
 
                         await handle_rcon_console_line(
@@ -1604,6 +1570,7 @@ async def rcon_console_watch(server_key: str, host: str, port: int, password: st
                     except Exception as e:
                         print(f"[RCON-WATCH:{server_key}] Handler error: {e}")
                         # keep listening on same ws
+
 
 
 
