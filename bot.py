@@ -1784,6 +1784,9 @@ async def on_ready():
 # ===================== SLASH COMMANDS =====================
 
 # ----- TP / printpos slash helpers -----
+# Stores the last TP spawn_points list you used (per Discord user)
+# user_id -> List[Tuple[float,float,float]]
+TP_SPAWN_CLIPBOARD: dict[int, list[tuple[float, float, float]]] = {}
 
 TP_TYPE_CHOICES = [
     app_commands.Choice(name="Launch Site", value=TPType.LAUNCHSITE.value),
@@ -1990,6 +1993,44 @@ async def tp_delete(interaction: discord.Interaction, tp_type: str):
         except Exception:
             pass
 
+@bot.tree.command(
+    name="tp-show-clipboard",
+    description="Show the last TP spawn points you saved with /tp-set-zone.",
+)
+async def tp_show_clipboard(interaction: discord.Interaction):
+    # Only AI control roles
+    if not isinstance(interaction.user, discord.Member) or not any(
+        r.id in AI_CONTROL_ROLES for r in interaction.user.roles
+    ):
+        await interaction.response.send_message(
+            "❌ You do not have permission to view TP clipboard.",
+            ephemeral=True,
+        )
+        return
+
+    spawn_points = TP_SPAWN_CLIPBOARD.get(interaction.user.id)
+    if not spawn_points:
+        await interaction.response.send_message(
+            "📋 **TP Clipboard is empty**\n"
+            "Run **/tp-set-zone** first to save spawn points.",
+            ephemeral=True,
+        )
+        return
+
+    lines = []
+    for idx, (x, y, z) in enumerate(spawn_points, start=1):
+        lines.append(f"`#{idx}` → **X:** `{x:.2f}` **Y:** `{y:.2f}` **Z:** `{z:.2f}`")
+
+    embed = discord.Embed(
+        title="📋 TP Spawn Clipboard",
+        description="\n".join(lines),
+        color=0xE67E22,
+    )
+    embed.set_footer(
+        text=f"Saved spawns: {len(spawn_points)} • Use /tp-copy-zone to reuse"
+    )
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(
@@ -2090,6 +2131,8 @@ async def tp_set_zone(
         )
         return
 
+    # Save these spawns as the user's "clipboard" so they can reuse them via /tp-copy-zone
+    TP_SPAWN_CLIPBOARD[interaction.user.id] = list(spawn_points_list)
 
     # ==============================
     # Per-type messages (TP system)
@@ -2204,6 +2247,131 @@ async def tp_set_zone(
         f"`({zone_x}, {zone_y_for_bot}, {zone_z})` and **{created_slots}** spawn point(s).\n"
         f"📡 Sent **{total_sent}** Rust `zones.*` setup command(s) via RCON "
         f"to servers: {', '.join(ZONE_RCON_SERVER_KEYS)}.",
+        ephemeral=True,
+    )
+@bot.tree.command(
+    name="tp-copy-zone",
+    description="Create a TP zone using the last spawn points you set (no need to retype coords).",
+)
+@app_commands.describe(
+    tp_type="Which monument type you are creating the trigger zone for",
+    zone_x="Trigger zone center X",
+    zone_y="Trigger zone center Y",
+    zone_z="Trigger zone center Z",
+)
+@app_commands.choices(tp_type=TP_TYPE_CHOICES)
+async def tp_copy_zone(
+    interaction: discord.Interaction,
+    tp_type: app_commands.Choice[str],
+    zone_x: float,
+    zone_y: float,
+    zone_z: float,
+):
+    # Only AI control roles
+    if not isinstance(interaction.user, discord.Member) or not any(
+        r.id in AI_CONTROL_ROLES for r in interaction.user.roles
+    ):
+        await interaction.response.send_message(
+            "❌ You do not have permission to set TP zones.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    # Must have a clipboard from /tp-set-zone
+    spawn_points_list = TP_SPAWN_CLIPBOARD.get(interaction.user.id)
+    if not spawn_points_list:
+        await interaction.followup.send(
+            "❌ No saved spawn points yet.\n"
+            "Run **/tp-set-zone** once first (it saves your spawns), then use **/tp-copy-zone**.",
+            ephemeral=True,
+        )
+        return
+
+    # Convert choice -> TPType enum
+    tp_enum = TPType(tp_type.value)
+
+    # Per-type messages (same behavior as tp-set-zone)
+    enter_msg = TP_ENTER_MESSAGES.get(tp_enum, f"Teleporting via {tp_enum.value} zone...")
+    exit_msg = TP_EXIT_MESSAGES.get(tp_enum, f"You have left the {tp_enum.value} zone.")
+
+    # Clear old zones for this type (same behavior as tp-set-zone)
+    try:
+        clear_tp_type(tp_enum)
+    except Exception as e:
+        print(f"[TP-ZONES] Failed to clear zones for {tp_enum.value}: {e}")
+
+    # Color
+    final_color = DEFAULT_ZONE_COLORS.get(tp_enum.value, "WHITE")
+
+    # Save TP zone(s) to tp_zones.json (same pattern as tp-set-zone)
+    created_slots = 0
+    for slot_idx, (dx, dy, dz) in enumerate(spawn_points_list, start=1):
+        set_tp_zone(
+            tp_enum,
+            slot_idx,
+            zone_x,
+            zone_y,
+            zone_z,
+            dx,
+            dy,
+            dz,
+            color=final_color,
+            enter_message=enter_msg,
+            exit_message=exit_msg,
+            spawn_points=spawn_points_list,
+        )
+        created_slots += 1
+
+    # Build & send Rust zones.* commands (reuse the exact logic from tp-set-zone)
+    friendly_name = FRIENDLY_TP_NAMES.get(tp_enum, tp_enum.value.title())
+    zone_name = f"{tp_enum.value} MAIN"
+
+    # Color mapping used by tp-set-zone
+    r, g, b = ZONE_COLOR_RGB.get(final_color, (1, 1, 1))
+
+    enter_html = (enter_msg or "").replace('"', "'")
+    leave_html = (exit_msg or "").replace('"', "'")
+
+    delete_cmds = [
+        f'zones.removecustomzone "{zone_name}"',
+    ]
+
+    create_main_cmds = [
+        f'zones.createcustomzone "{zone_name}" ({zone_x},{zone_y},{zone_z}) 120 sphere 1.5 1 0 0 0 1',
+    ]
+
+    edit_main_cmds = [
+        f'zones.editcustomzone "{zone_name}" showarea 1',
+        f'zones.editcustomzone "{zone_name}" color ({r},{g},{b})',
+        f'zones.editcustomzone "{zone_name}" "allowbuildingdamage" "0"',
+        f'zones.editcustomzone "{zone_name}" showchatmessage 1',
+        f'zones.editcustomzone "{zone_name}" entermessage "{enter_html}"',
+        f'zones.editcustomzone "{zone_name}" "leavemessage" "{leave_html}"',
+    ]
+
+    spawn_cmds: List[str] = []
+    for idx, (sx, sy, sz) in enumerate(spawn_points_list, start=1):
+        spawn_zone_name = f"{tp_enum.value} SPAWN #{idx}"
+        spawn_cmds += [
+            f'zones.createcustomzone "{spawn_zone_name}" ({sx},{sy},{sz}) 120 sphere 1.5 1 0 0 0 1',
+            f'zones.editcustomzone "{spawn_zone_name}" showarea 0',
+            f'zones.editcustomzone "{spawn_zone_name}" "allowbuildingdamage" "0"',
+            f'zones.editcustomzone "{spawn_zone_name}" showchatmessage 1',
+        ]
+
+    total_sent = 0
+    total_sent += await _send_zone_setup_cmds(delete_cmds, zone_name)
+    total_sent += await _send_zone_setup_cmds(create_main_cmds, zone_name)
+    total_sent += await _send_zone_setup_cmds(edit_main_cmds, zone_name)
+    total_sent += await _send_zone_setup_cmds(spawn_cmds, zone_name)
+
+    await interaction.followup.send(
+        f"✅ Copied TP spawns to **{friendly_name}**.\n"
+        f"Trigger: `({zone_x:.2f}, {zone_y:.2f}, {zone_z:.2f})`\n"
+        f"Spawns reused: `{len(spawn_points_list)}`\n"
+        f"RCON cmds sent: `{total_sent}`",
         ephemeral=True,
     )
 
