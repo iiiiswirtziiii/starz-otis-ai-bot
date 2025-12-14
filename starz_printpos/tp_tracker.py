@@ -214,17 +214,11 @@ async def process_printpos_response(server_key: str, player_name: str, resp_text
     if PRINTPOS_VERBOSE_LOGS:
         print(f"[STARZ-PRINTPOS] POS {server_key}/{player_name} = ({x:.2f},{y:.2f},{z:.2f})")
 
-d2 = _min_dist2_to_any_zone(x, y, z)
-if d2 is not None and d2 > FAR_DISTANCE_METERS ** 2:
-    _cooldown_until[(server_key, player_name)] = time.time() + FAR_SKIP_SECONDS
-    st["far"] += 1
-    # not near
-    _near_set[server_key].discard(player_name)
-    return
-
-# If we get here: they are near enough (or no zones configured)
-_near_set[server_key].add(player_name)
-
+    d2 = _min_dist2_to_any_zone(x, y, z)
+    if d2 is not None and d2 > FAR_DISTANCE_METERS ** 2:
+        _cooldown_until[(server_key, player_name)] = time.time() + FAR_SKIP_SECONDS
+        st["far"] += 1
+        return
 
     cmds = check_zones_for_player(server_key, player_name, x, y, z)
     if not cmds:
@@ -234,6 +228,8 @@ _near_set[server_key].add(player_name)
     for cmd in cmds:
         await _send_rcon(server_key, cmd)
         await asyncio.sleep(PER_COMMAND_DELAY)
+
+
 
 
 
@@ -350,6 +346,7 @@ async def _position_poll_loop() -> None:
                 _stats[server_key]["err"] += 1
 
         _log_status_if_due(server_key, True)
+
 
 
 
