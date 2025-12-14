@@ -1384,75 +1384,52 @@ async def handle_rcon_console_line(
     )
 
 
-# 5) High-risk spawn enforcement (ONLY on real spawn/kit lines)
-if RCON_ENABLED:
-    admin_ids = find_matching_admin_ids_from_text(msg_text)
-    if admin_ids:
+    # 5) High-risk spawn enforcement (ONLY on real spawn/kit lines)
+    if RCON_ENABLED:
+        admin_ids = find_matching_admin_ids_from_text(msg_text)
+        if admin_ids:
+            lt = msg_text.lower()
 
-        # 🔍 TEMP DEBUG — show raw spawn lines
-        lt = msg_text.lower()
-        if "servervar" in lt or "giving" in lt:
-            print(f"[SPAWN-RAW] {msg_text}")
+            # 🔍 TEMP DEBUG — show raw spawn lines
+            if "servervar" in lt or "giving" in lt:
+                print(f"[SPAWN-RAW] {msg_text}")
 
-        # ---- Case 1: real item spawn line ----
-        parsed_full = _parse_spawn_from_console_line_full(msg_text)
-        print(f"[SPAWN-DEBUG] parsed_full={parsed_full}")
+            # ---- Case 1: real item spawn line ----
+            parsed_full = _parse_spawn_from_console_line_full(msg_text)
+            print(f"[SPAWN-DEBUG] parsed_full={parsed_full}")
 
-        if parsed_full:
-            _gt, _amt, item_text = parsed_full
+            if parsed_full:
+                _gt, _amt, item_text = parsed_full
 
-            # Normalize item text and compare to configured high-risk items
-            item_key = item_text.lower().strip()
-            matched_item = None
-            for hr in HIGH_RISK_SPAWN_ITEMS:
-                if hr.lower() in item_key:
-                    matched_item = hr
-                    break
+                item_key = item_text.lower().strip()
+                matched_item = None
+                for hr in HIGH_RISK_SPAWN_ITEMS:
+                    if hr.lower() in item_key:
+                        matched_item = hr
+                        break
 
-            if matched_item:
-                for admin_id in admin_ids:
-                    if is_admin_immune(admin_id):
-                        continue
+                if matched_item:
+                    for admin_id in admin_ids:
+                        if is_admin_immune(admin_id):
+                            continue
 
-                    await handle_spawn_enforcement_for_event(
-                        admin_id=admin_id,
-                        server_key=server_key,
-                        server_name=server_name,
-                        matched_item=matched_item,
-                        console_line=msg_text,
-                        created_at_ts=created_at_ts,
-                    )
-                return
-
-        # ---- Case 2: kit claim success line (KITMANAGER) ----
-        if "[kitmanager]" in lt and "successfully gave" in lt:
-            m_kit = re.search(
-                r"\[kitmanager\].*?\[([^\]]+)\]",
-                msg_text,
-                re.IGNORECASE,
-            )
-            kit_name = (m_kit.group(1) if m_kit else "").strip().lower()
-
-            if kit_name and kit_name in {k.lower() for k in HIGH_RISK_KITS}:
-                for admin_id in admin_ids:
-                    if is_admin_immune(admin_id):
-                        continue
-
-                    await handle_spawn_enforcement_for_event(
-                        admin_id=admin_id,
-                        server_key=server_key,
-                        server_name=server_name,
-                        matched_item=kit_name,
-                        console_line=msg_text,
-                        created_at_ts=created_at_ts,
-                    )
-                return
-
+                        await handle_spawn_enforcement_for_event(
+                            admin_id=admin_id,
+                            server_key=server_key,
+                            server_name=server_name,
+                            matched_item=matched_item,
+                            console_line=msg_text,
+                            created_at_ts=created_at_ts,
+                        )
+                    return
 
             # ---- Case 2: kit claim success line (KITMANAGER) ----
-            lt = msg_text.lower()
             if "[kitmanager]" in lt and "successfully gave" in lt:
-                m_kit = re.search(r"\[kitmanager\].*?\[([^\]]+)\]", msg_text, re.IGNORECASE)
+                m_kit = re.search(
+                    r"\[kitmanager\].*?\[([^\]]+)\]",
+                    msg_text,
+                    re.IGNORECASE,
+                )
                 kit_name = (m_kit.group(1) if m_kit else "").strip().lower()
 
                 if kit_name and kit_name in {k.lower() for k in HIGH_RISK_KITS}:
@@ -1469,8 +1446,6 @@ if RCON_ENABLED:
                             created_at_ts=created_at_ts,
                         )
                     return
-
-
 
 
 async def rcon_console_watch(server_key: str, host: str, port: int, password: str):
