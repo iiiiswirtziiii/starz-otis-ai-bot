@@ -1962,23 +1962,28 @@ async def tp_delete(interaction: discord.Interaction, tp_type: str):
         cmds.append(f'zones.deletecustomzone "{name}"')
         cmds.append(f'zones.removecustomzone "{name}"')  # fallback alias on some builds
 
-    for server_key in ZONE_RCON_SERVER_KEYS:
-        for cmd in cmds:
-            try:
-                print(f"[TP-DELETE:{server_key}] {cmd}")
-                await asyncio.wait_for(tp_send_rcon(server_key, cmd), timeout=6.0)
-            except Exception as e:
-                print(f"[TP-DELETE:{server_key}] Failed: {cmd!r}: {e}")
-            await asyncio.sleep(1)
+    try:
+        for server_key in ZONE_RCON_SERVER_KEYS:
+            for cmd in cmds:
+                try:
+                    print(f"[TP-DELETE:{server_key}] {cmd}")
+                    await asyncio.wait_for(tp_send_rcon(server_key, cmd), timeout=6.0)
+                except Exception as e:
+                    print(f"[TP-DELETE:{server_key}] Failed: {cmd!r}: {e}")
+                await asyncio.sleep(1)
 
-    await interaction.followup.send(
-        f"✅ Deleted **{tp_enum.value}** ({removed} slot(s)) + MAIN + SPAWN zones.",
-            except Exception as e:
+        await interaction.followup.send(
+            f"✅ Deleted **{tp_enum.value}** ({removed} slot(s)) + MAIN + SPAWN zones.",
+            ephemeral=True,
+        )
+
+    except Exception as e:
         # Always finalize the interaction so Discord doesn't stick on "thinking..."
         try:
             await interaction.followup.send(f"❌ tp-delete failed: `{e}`", ephemeral=True)
         except Exception:
             pass
+
 
         ephemeral=True,
     )
@@ -2034,7 +2039,8 @@ async def tp_set_zone(
         return
 
     await interaction.response.defer(ephemeral=True)
-    try:
+
+
 
     # Convert choice -> TPType enum
     tp_enum = TPType(tp_type.value)
@@ -2139,10 +2145,30 @@ async def tp_set_zone(
         "<b>"
     )
 
-    # Start the command list FIRST (so we can append spawn zones after)
-    zone_setup_cmds: List[str] = [
+    # ==============================
+    # Build Rust zones.* commands (PHASED)
+    # Delete runs ONLY before create (never after)
+    # ==============================
+
+    # --- Phase 1: DELETE everything first (MAIN + all SPAWNS) ---
+    delete_cmds: List[str] = [
         f'zones.deletecustomzone "{zone_name}"',
+        f'zones.removecustomzone "{zone_name}"',
+    ]
+    for idx in range(1, len(spawn_points_list) + 1):
+        spawn_zone_name = f"{tp_enum.value} SPAWN #{idx}"
+        delete_cmds += [
+            f'zones.deletecustomzone "{spawn_zone_name}"',
+            f'zones.removecustomzone "{spawn_zone_name}"',
+        ]
+
+    # --- Phase 2: CREATE MAIN ---
+    create_main_cmds: List[str] = [
         f'zones.createcustomzone "{zone_name}" ({zone_x},{zone_y_for_rust},{zone_z}) 120 sphere 1.5 1 0 0 0 1',
+    ]
+
+    # --- Phase 3: EDIT MAIN ---
+    edit_main_cmds: List[str] = [
         f'zones.editcustomzone "{zone_name}" showarea 1',
         f'zones.editcustomzone "{zone_name}" color ({r},{g},{b})',
         f'zones.editcustomzone "{zone_name}" "allowbuildingdamage" "0"',
@@ -2151,13 +2177,11 @@ async def tp_set_zone(
         f'zones.editcustomzone "{zone_name}" "leavemessage" "{leave_html}"',
     ]
 
-    # ==========================
-    # Add invincible spawn zones
-    # ==========================
+    # --- Phase 4: CREATE+EDIT SPAWNS (invincible destinations) ---
+    spawn_cmds: List[str] = []
     for idx, (sx, sy, sz) in enumerate(spawn_points_list, start=1):
         spawn_zone_name = f"{tp_enum.value} SPAWN #{idx}"
-        zone_setup_cmds += [
-            f'zones.deletecustomzone "{spawn_zone_name}"',
+        spawn_cmds += [
             f'zones.createcustomzone "{spawn_zone_name}" ({sx},{sy},{sz}) 120 sphere 1.5 1 0 0 0 1',
             f'zones.editcustomzone "{spawn_zone_name}" showarea 0',
             f'zones.editcustomzone "{spawn_zone_name}" "allowbuildingdamage" "0"',
@@ -2165,9 +2189,13 @@ async def tp_set_zone(
         ]
 
     # ==============================
-    # Send zone commands via RCON
+    # Send zone commands via RCON (phased)
     # ==============================
-    total_sent = await _send_zone_setup_cmds(zone_setup_cmds, zone_name)
+    total_sent = 0
+    total_sent += await _send_zone_setup_cmds(delete_cmds, zone_name)
+    total_sent += await _send_zone_setup_cmds(create_main_cmds, zone_name)  # verify happens after create inside sender
+    total_sent += await _send_zone_setup_cmds(edit_main_cmds, zone_name)
+    total_sent += await _send_zone_setup_cmds(spawn_cmds, zone_name)
 
     await interaction.followup.send(
         f"✅ Set TP zone for **{friendly_name}** with trigger at "
@@ -2177,20 +2205,6 @@ async def tp_set_zone(
         ephemeral=True,
     )
 
-
-
-def _get_spawn_count_for_tp(tp_type_value: str) -> int:
-    """
-    Reads your bot-side TP config (tp_zones.json via tp_zones.py) and returns
-    how many spawn points exist for this tp_type (uses first slot found).
-    """
-    from starz_printpos.tp_zones import get_all_zones
-
-    tp_type_value = (tp_type_value or "").upper().strip()
-    for z in get_all_zones():
-        if str(z.tp_type).upper().strip() == tp_type_value:
-            return max(1, len(z.spawn_points or []))
-    return 1
 
 
 async def _send_zone_setup_cmds(zone_setup_cmds: list[str], zone_name: str) -> int:
