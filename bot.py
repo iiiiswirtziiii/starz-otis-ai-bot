@@ -1530,8 +1530,13 @@ async def rcon_console_watch(server_key: str, host: str, port: int, password: st
                 except Exception:
                     pass
 
+                # Re-enable printpos/TP after successful reconnect
+                try:
+                    set_printpos_enabled(True)
+                except Exception:
+                    pass
 
-                        async for raw in ws:
+                async for raw in ws:
                     # 1) Parse JSON safely
                     try:
                         data = json.loads(raw)
@@ -1554,9 +1559,7 @@ async def rcon_console_watch(server_key: str, host: str, port: int, password: st
                             except Exception as e:
                                 print(f"[PRINTPOS:{server_key}] error handling ident!=0 line: {e}")
 
-                        # ✅ IMPORTANT: DO NOT continue here
-                        # Enforcement/admin logic must still see this line
-
+                        # ✅ IMPORTANT: DO NOT continue — still pass the line to the main handler
                         created_at_ts = time.time()
 
                         await handle_rcon_console_line(
