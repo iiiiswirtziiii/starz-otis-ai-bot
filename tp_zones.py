@@ -398,7 +398,7 @@ def check_zones_for_player(
 
     _last_player_zones[player_key] = current_zones
 
-    print(f"[TP-CHECK-END] server={server_key} player={player_name} cmds={cmds}")
+   # print(f"[TP-CHECK-END] server={server_key} player={player_name} cmds={cmds}")
     return cmds
 
 
