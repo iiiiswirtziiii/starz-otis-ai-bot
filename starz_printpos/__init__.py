@@ -1,9 +1,11 @@
 from .tp_tracker import (
     init_printpos_system,
     start_printpos_polling,
+    handle_printpos_console_line,
     set_enabled,
     is_enabled,
 )
+
 
 
 from .tp_zones import (
@@ -19,5 +21,6 @@ from .tp_zones import (
 
     DEFAULT_ZONE_COLORS,
 )
+
 
 
