@@ -966,56 +966,55 @@ def _format_spawn_event_line(evt: Dict[str, Any]) -> str:
     item = evt["item"]
     amount = evt["amount"]
     return f"{server} {item} {amount} {time_str}"
+    
 def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str, int, str]]:
     """
-    Robust parser for Rust Console spawn lines.
-
-    Handles:
-    - timestamps / prefixes before [ServerVar]
-    - quoted or unquoted gamertags
-    - 'x' OR the multiply symbol '×'
-    - multi-word items (Rocket, MLRS Rocket, Timed Explosive Charge, etc.)
+    Very robust parser for Rust Console spawn lines like:
+      12/14/2025 ... [ServerVar] giving NAME 9 x Rocket
+      [ServerVar] giving "NAME" 9 × MLRS Rocket
+    Returns (gamertag, amount, item_text) or None.
     """
-
     if not console_line:
         return None
 
     line = str(console_line).replace("\u0000", "").strip()
 
-    # Strip anything before [ServerVar] (timestamps, LOG:, etc.)
-    idx = line.lower().find("[servervar]")
+    # normalize common weirdness
+    line = line.replace("×", "x")          # unicode multiply -> x
+    line = line.replace("\u00A0", " ")     # NBSP -> space
+
+    # cut everything before [ServerVar] if present
+    low = line.lower()
+    idx = low.find("[servervar]")
     if idx != -1:
         line = line[idx:]
 
-    # Accept "x" or "×" between amount and item
-    pattern = re.compile(
-        r"""
-        \[ServerVar\]                 # prefix
-        \s+giving\s+                  # giving
-        "?([^"\s]+)"?\s+              # gamertag (quoted or not)
-        (\d+)\s*                      # amount
-        (?:x|×)\s+                    # x or ×
-        (.+?)                         # item name (anything, non-greedy)
-        \s*$                          # end of line
-        """,
-        re.IGNORECASE | re.VERBOSE,
+    # 1) strict-but-flexible match
+    m = re.search(
+        r'\[ServerVar\]\s+giving\s+"?([^"\r\n]+?)"?\s+(\d+)\s*x\s+(.+)$',
+        line,
+        flags=re.IGNORECASE,
     )
-
-    m = pattern.search(line)
     if not m:
         return None
 
     gamertag = m.group(1).strip()
     try:
         amount = int(m.group(2))
-    except ValueError:
+    except Exception:
         amount = 0
 
     item_text = m.group(3).strip()
+
+    # trim common trailing junk (parens / extra info)
+    for cut in (" (", " [", "\t"):
+        if cut in item_text:
+            item_text = item_text.split(cut, 1)[0].strip()
+
+    # trim trailing punctuation
+    item_text = item_text.rstrip(".").strip()
+
     return gamertag, amount, item_text
-
-
-
 
 
 
