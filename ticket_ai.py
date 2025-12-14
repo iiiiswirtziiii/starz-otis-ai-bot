@@ -1057,11 +1057,17 @@ _⏰ Times show in **your local timezone** in Discord._
         )
         reply_text = completion.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[TICKET-AI] OpenAI error: {e}")
+        # Prevent log spam if OpenAI is temporarily unreachable
+        import time as _time
+        now = _time.time()
+
+        last = session.get("last_openai_error_ts", 0)
+        if now - last > 20:  # log at most once every 20s per ticket
+            session["last_openai_error_ts"] = now
+            print(f"[TICKET-AI] OpenAI error: {type(e).__name__}: {e}")
+
         return
 
-    if not reply_text:
-        return
 
     # ---------- Hard sentence limiter (max 3 sentences) ----------
     import re
@@ -1091,3 +1097,4 @@ _⏰ Times show in **your local timezone** in Discord._
     if session["assistant_count"] >= MAX_SUPPORT_ASSISTANT_MESSAGES:
         await _handle_ai_limit(channel, session)
         session["ai_disabled"] = True
+
