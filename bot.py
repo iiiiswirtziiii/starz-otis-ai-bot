@@ -1377,8 +1377,8 @@ async def handle_rcon_console_line(
     matching_admin_ids = find_matching_admin_ids_from_text(msg_text)
     if not matching_admin_ids:
         return
+    server_name = server_key
 
-   server_name = server_name_for_key(server_key)  # or your own mapping
 
     # 3) Admin monitor log update
     await log_admin_activity_for_ids(
