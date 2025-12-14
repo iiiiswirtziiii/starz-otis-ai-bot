@@ -24,12 +24,12 @@ def _is_noisy_command(cmd: str) -> bool:
 # ✅ Kept INLINE as requested
 RCON_CONFIGS: Dict[str, Dict] = {
     "s1":  {"host": "209.126.11.83",     "port": 29316, "password": "nTjwvYvg"},
-    "s2":  {"host": "45.137.247.28",     "port": 28016, "password": "KzlgSdIa"},
+   # "s2":  {"host": "45.137.247.28",     "port": 28016, "password": "KzlgSdIa"},
     "s3":  {"host": "94.72.116.55",      "port": 29516, "password": "xU5OAm24"},
     "s4":  {"host": "147.93.160.201",    "port": 28016, "password": "DJAJ5KWW"},
     "s5":  {"host": "147.93.161.130",    "port": 29216, "password": "BdwIkooa"},
     "s6":  {"host": "207.244.244.91",    "port": 28516, "password": "ATPxVXYN"},
-    "s7":  {"host": "144.126.136.210",   "port": 29716, "password": "y8YUK93z"},
+   # "s7":  {"host": "144.126.136.210",   "port": 29716, "password": "y8YUK93z"},
     "s8":  {"host": "144.126.137.59",    "port": 30716, "password": "9faIRNLz"},
     "s9":  {"host": "45.137.244.53",     "port": 31816, "password": "EE6CIT41"},
     "s10": {"host": "46.250.243.156",    "port": 28016, "password": "uee3itkf"},
@@ -230,5 +230,6 @@ async def rcon_send_all(command: str, timeout: float = 5.0) -> None:
 
     if not _is_noisy_command(command):
         print(f"[RCON] Broadcast complete for: {command!r}")
+
 
 
