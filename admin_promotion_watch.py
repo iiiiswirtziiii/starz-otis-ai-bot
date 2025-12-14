@@ -12,9 +12,17 @@ from typing import Optional, Dict, List
 
 import discord
 
-from config_starz import ADMIN_ENFORCEMENT_CHANNEL_ID
+from config_starz import (
+    ADMIN_ENFORCEMENT_CHANNEL_ID,
+    PROMOTER_ROLE_IDS,
+)
 from rcon_web import RCON_CONFIGS
-from admin_monitor import get_admin_profile, find_matching_admin_ids_from_text
+from admin_monitor import (
+    get_admin_profile,
+    find_matching_admin_ids_from_text,
+    get_admin_id_for_discord,
+    fetch_admin_basic,
+)
 from bans import create_ban_record
 
 # We treat the admin enforcement channel as the "head admin" channel
@@ -62,12 +70,11 @@ def extract_promoted_gamertag(line: str) -> tuple[str | None, str | None]:
         group_name = m.group("group").strip()
         return player_name, group_name
 
-    # Fallback: other possible patterns could be added here later
     return None, None
 
 
 # ===========================================================
-# Search Discord messages from last 30 seconds to find promoter
+# Search Discord messages to find promoter
 # ===========================================================
 async def find_promoter_from_discord(bot, gamertag: str) -> discord.Member | None:
     """
@@ -82,23 +89,18 @@ async def find_promoter_from_discord(bot, gamertag: str) -> discord.Member | Non
     - If none match the gamertag, fall back to the most recent
       message that contains a promotion command at all.
     """
-    # Make cutoff timezone-aware to match Discord's timestamps
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(minutes=5)
 
-    exact_match: Optional[discord.Member] = None
     fallback_match: Optional[discord.Member] = None
     fallback_timestamp: Optional[datetime] = None
 
     for guild in bot.guilds:
         for channel in guild.text_channels:
             try:
-                # Fetch recent messages, then filter by time ourselves
                 async for msg in channel.history(limit=100):
-                    # Ignore messages older than cutoff
                     if msg.created_at < cutoff:
                         continue
-
                     if not msg.content:
                         continue
 
@@ -108,24 +110,22 @@ async def find_promoter_from_discord(bot, gamertag: str) -> discord.Member | Non
                     if not any(cmd in lower for cmd in DISCORD_PROMOTION_COMMANDS):
                         continue
 
-                    # If the gamertag is in the message, treat as exact match
+                    # Exact match: contains promoted gamertag
                     if gamertag.lower() in lower:
-                        # Immediate best match: the person who ran the command
                         return msg.author
 
-                    # Otherwise, track as fallback (latest one wins)
+                    # Otherwise fallback to most recent consoles command
                     if fallback_timestamp is None or msg.created_at > fallback_timestamp:
                         fallback_match = msg.author
                         fallback_timestamp = msg.created_at
 
             except Exception as e:
-                print(f"[ADMIN-PROMOTION] Error scanning channel {getattr(channel, 'id', '?')}: {e}")
+                print(
+                    f"[ADMIN-PROMOTION] Error scanning channel {getattr(channel, 'id', '?')}: {e}"
+                )
                 continue
 
-    # Prefer exact → but if none, fallback to "last person who ran consoles command"
-    return exact_match or fallback_match
-
-
+    return fallback_match
 
 
 # ===========================================================
@@ -168,20 +168,20 @@ async def fetch_playerlist_for_server(server_name: str) -> str:
     from rcon_web import rcon_manager
 
     try:
-        # GPORTAL Rust Console: 'playerlist' lists connected players
         resp = await rcon_manager.send(server_name, "playerlist")
-        raw_msg = (resp.get("Message") or "").strip() if isinstance(resp, dict) else str(resp)
+        raw_msg = (
+            (resp.get("Message") or "").strip() if isinstance(resp, dict) else str(resp)
+        )
 
         if not raw_msg:
             return "No player list returned."
 
-        # Avoid huge embeds – trim very long output
         if len(raw_msg) > 900:
             raw_msg = raw_msg[:900] + " ..."
 
         return raw_msg
     except Exception as e:
-        print(f"[ADMIN-PROMOTION] Error fetching playerlist for {server_name}: {e}")
+        print(f"[ADMIN-PROMOTION] Error fetching player list for {server_name}: {e}")
         return f"Error fetching player list: {e}"
 
 
@@ -199,14 +199,8 @@ class PromotionDecisionView(discord.ui.View):
         self.promoter_player = promoter_player
         self.auto_banned = auto_banned
 
-    # ---------- helpers ----------
-
     @staticmethod
     def _is_success(per_server_results: Dict[str, str]) -> bool:
-        """
-        Consider the command successful if none of the server responses
-        contain 'error' (case-insensitive).
-        """
         if not per_server_results:
             return False
         for msg in per_server_results.values():
@@ -229,7 +223,6 @@ class PromotionDecisionView(discord.ui.View):
         ts_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         all_results: Dict[str, Dict[str, Dict[str, str]]] = {}
 
-        # Run commands
         for player in self.auto_banned:
             unban_cmd = f'unban "{player}"'
             admin_cmd = f'adminid "{player}"'
@@ -239,7 +232,6 @@ class PromotionDecisionView(discord.ui.View):
                 "adminid": await send_rcon_all(rcon_manager, admin_cmd),
             }
 
-        # Build pretty embed
         desc_lines: List[str] = [
             "The following corrective actions were run:\n",
             "**Command Status**",
@@ -270,19 +262,14 @@ class PromotionDecisionView(discord.ui.View):
         from rcon_web import rcon_manager
 
         ts_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        all_results: Dict[str, Dict[str, Dict[str, str]]] = {}
 
         players = [p for p in self.auto_banned if p]
+        all_results: Dict[str, Dict[str, Dict[str, str]]] = {}
 
-        # Run commands
         for p in players:
-            ban_cmd = f'banid "{p}"'  # ✅ correct Rust Console ban command
+            ban_cmd = f'banid "{p}"'
+            all_results[p] = {"banid": await send_rcon_all(rcon_manager, ban_cmd)}
 
-            all_results[p] = {
-                "banid": await send_rcon_all(rcon_manager, ban_cmd),
-            }
-
-        # Build pretty embed (same style as restore, but red + ban status)
         desc_lines: List[str] = [
             "The following ban actions were run:\n",
             "**Command Status**",
@@ -290,7 +277,6 @@ class PromotionDecisionView(discord.ui.View):
 
         for player, cmds in all_results.items():
             desc_lines.append(f"\n**{player}**")
-
             ban_ok = self._is_success(cmds.get("banid", {}))
             desc_lines.append(self._status_line("banid", ts_str, ban_ok))
 
@@ -301,31 +287,6 @@ class PromotionDecisionView(discord.ui.View):
         )
 
         await interaction.followup.send(embed=embed, ephemeral=False)
-
-
-    # RED — Ban Everyone
-    @discord.ui.button(label="Ban Admins", style=discord.ButtonStyle.danger)
-    async def ban_admins(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
-
-        from rcon_web import rcon_manager
-
-        players = [p for p in self.auto_banned if p]
-
-        results: Dict[str, Dict[str, Dict[str, str]]] = {}
-
-        for p in players:
-            ban_cmd = f'banid "{p}"'  # ✅ correct Rust Console ban command
-
-            results[p] = {
-                "banid": await send_rcon_all(rcon_manager, ban_cmd),
-            }
-
-        await interaction.followup.send(
-            f"🔴 **Admins Fully Banned:** `{', '.join(players)}`",
-            ephemeral=False,
-        )
-
 
 
 # ===========================================================
@@ -370,7 +331,7 @@ async def send_promotion_embed(
         color=discord.Color.red(),
     )
 
-    # ---- Neater Command Results ----
+    # Neater command results
     result_lines: List[str] = []
     for player in auto_banned_players:
         cmd_map = cmd_results_initial.get(player, {})
@@ -379,7 +340,6 @@ async def send_promotion_embed(
 
         result_lines.append(f"**{player}**")
 
-        # banid → "banned"
         per_server_ban = cmd_map.get("banid")
         if per_server_ban:
             ok = True
@@ -388,11 +348,8 @@ async def send_promotion_embed(
                     ok = False
                     break
             status = "✅ successful" if ok else "❌ not successful"
-            result_lines.append(
-                f"• `banned` | `{time_only_str}` | {status}"
-            )
+            result_lines.append(f"• `banned` | `{time_only_str}` | {status}")
 
-        # vipid → "vip"
         per_server_vip = cmd_map.get("vipid")
         if per_server_vip:
             ok = True
@@ -401,19 +358,12 @@ async def send_promotion_embed(
                     ok = False
                     break
             status = "✅ successful" if ok else "❌ not successful"
-            result_lines.append(
-                f"• `vip` | `{time_only_str}` | {status}"
-            )
+            result_lines.append(f"• `vip` | `{time_only_str}` | {status}")
 
-        result_lines.append("")  # blank line between players
+        result_lines.append("")
 
     if result_lines:
-        embed.add_field(
-            name="Command Results",
-            value="\n".join(result_lines),
-            inline=False,
-        )
-
+        embed.add_field(name="Command Results", value="\n".join(result_lines), inline=False)
 
     view = PromotionDecisionView(
         promoted_player=promoted,
@@ -424,7 +374,6 @@ async def send_promotion_embed(
     await channel.send(embed=embed, view=view)
 
 
-
 # ===========================================================
 # MAIN HANDLER — Called from bot.py RCON console watcher
 # ===========================================================
@@ -433,50 +382,64 @@ async def maybe_handle_admin_promotion(
     server_name: str,
     msg_text: str,
     created_at_ts: float,
-):
-    lt = msg_text.lower()
-
-    # First, try to parse a proper "Added [X] to Group [Y]" line
+) -> None:
+    # Parse "Added [X] to Group [Admin|Moderator]"
     promoted, group = extract_promoted_gamertag(msg_text)
     if not promoted or not group:
-        # Not a promotion line we care about
         return
 
-    # Only react to Admin / Moderator group changes
     group_lower = group.lower()
     if group_lower not in ("admin", "moderator"):
-        # e.g. "VIP", "Server", etc. -> ignore
         return
 
     print(f"[ADMIN-PROMOTION] Detected promotion: {promoted} to group {group} on {server_name}")
 
-    # 1) Grab a playerlist snapshot for this server
+    # 1) Playerlist snapshot
     playerlist_snapshot = await fetch_playerlist_for_server(server_name)
-    print(f"[ADMIN-PROMOTION] Playerlist snapshot for {server_name}:\n{playerlist_snapshot}")
 
-    # 2) Find Discord promoter via !consoles admin/moderator
+    # 2) Who ran the consoles command?
     promoter_member = await find_promoter_from_discord(bot, promoted)
-    promoter_name: Optional[str] = None
-    if promoter_member is not None:
-        promoter_name = promoter_member.display_name
 
-    # 3) Protected role check for the Discord promoter
+    # Build promoter identity (prefer DB main gamertag if registered)
+    promoter_name: Optional[str] = None
+    is_registered_promoter = False
+
+    if promoter_member is not None:
+        promoter_admin_id = get_admin_id_for_discord(promoter_member.id)
+        has_promoter_role = any(r.id in PROMOTER_ROLE_IDS for r in promoter_member.roles)
+
+        is_registered_promoter = (promoter_admin_id is not None and has_promoter_role)
+
+        # Prefer their registered main gamertag (more likely to match console/RCON)
+        if promoter_admin_id is not None:
+            basic = fetch_admin_basic(promoter_admin_id)
+            if basic and basic.get("main_gamertag"):
+                promoter_name = str(basic["main_gamertag"]).strip()
+
+        # Fallback to Discord display name
+        if not promoter_name:
+            promoter_name = promoter_member.display_name
+
+    # 3) SAFE ROLE path:
+    #    - still no auto-bans
+    #    - BUT only notify Head Admin if promoter is a REGISTERED promoter (your rule)
     if promoter_member and promoter_is_protected(promoter_member):
         print("[ADMIN-PROMOTION] SAFE ROLE detected — no auto-bans.")
-        await send_promotion_embed(
-            bot=bot,
-            promoted=promoted,
-            promoter=promoter_name,
-            server=server_name,
-            time_detected=created_at_ts,
-            cmd_results_initial={},
-            reason="Promotion by protected role",
-            auto_banned_players=[],
-            playerlist_snapshot=playerlist_snapshot,
-        )
+        if is_registered_promoter:
+            await send_promotion_embed(
+                bot=bot,
+                promoted=promoted,
+                promoter=promoter_name,
+                server=server_name,
+                time_detected=created_at_ts,
+                cmd_results_initial={},
+                reason="Promotion by protected role (registered promoter triggered review)",
+                auto_banned_players=[],
+                playerlist_snapshot=playerlist_snapshot,
+            )
         return
 
-    # 4) Find registered admins who are currently online (from playerlist)
+    # 4) Find registered admins currently online (from playerlist snapshot)
     suspected_from_playerlist: set[str] = set()
     if playerlist_snapshot and "Error fetching" not in playerlist_snapshot:
         admin_ids = find_matching_admin_ids_from_text(playerlist_snapshot)
@@ -485,16 +448,7 @@ async def maybe_handle_admin_promotion(
             if profile and profile.get("gamertag"):
                 suspected_from_playerlist.add(profile["gamertag"])
 
-    # 5) Build final list of players to auto-ban:
-    #    - always the newly promoted player
-    #    - + the Discord promoter (if any)
-    #    - + any registered admins found in playerlist
-    players_to_ban: set[str] = {promoted}
-    if promoter_name:
-        players_to_ban.add(promoter_name)
-    players_to_ban |= suspected_from_playerlist
-
-    #    - + any registered admins found in playerlist
+    # 5) Who do we ban? (your current behavior)
     players_to_ban: set[str] = {promoted}
     if promoter_name:
         players_to_ban.add(promoter_name)
@@ -502,7 +456,7 @@ async def maybe_handle_admin_promotion(
 
     players_to_ban_list = sorted(players_to_ban)
 
-    # 6) Run RCON bans + VIP flags for everyone in players_to_ban_list
+    # 6) Run RCON bans + VIP flags
     from rcon_web import rcon_manager  # local import to avoid circulars
 
     cmd_results_initial: Dict[str, Dict[str, Dict[str, str]]] = {}
@@ -510,14 +464,12 @@ async def maybe_handle_admin_promotion(
     for p in players_to_ban_list:
         ban_cmd = f'banid "{p}"'
         vip_cmd = f'vipid "{p}"'
-
         cmd_results_initial[p] = {
             "banid": await send_rcon_all(rcon_manager, ban_cmd),
             "vipid": await send_rcon_all(rcon_manager, vip_cmd),
         }
 
-
-    # 7) Save bans in DB (using the unified bans.py helper)
+    # 7) Save bans in DB
     for p in players_to_ban_list:
         try:
             offense_tier, expires_at_ts, duration_text = create_ban_record(
@@ -534,16 +486,19 @@ async def maybe_handle_admin_promotion(
         except Exception as e:
             print(f"[ADMIN-PROMOTION] create_ban_record failed for {p}: {e}")
 
-
-    # 8) Send Head Admin embed so humans can review / undo
-    await send_promotion_embed(
-        bot=bot,
-        promoted=promoted,
-        promoter=promoter_name,
-        server=server_name,
-        time_detected=created_at_ts,
-        cmd_results_initial=cmd_results_initial,
-        reason="Unauthorized admin/moderator promotion",
-        auto_banned_players=players_to_ban_list,
-        playerlist_snapshot=playerlist_snapshot,
-    )
+    # 8) HEAD ADMIN EMBED GATE (your rule):
+    # Only send the Head Admin review embed if the promoter is a REGISTERED promoter.
+    if is_registered_promoter:
+        await send_promotion_embed(
+            bot=bot,
+            promoted=promoted,
+            promoter=promoter_name,
+            server=server_name,
+            time_detected=created_at_ts,
+            cmd_results_initial=cmd_results_initial,
+            reason="Unauthorized admin/moderator promotion",
+            auto_banned_players=players_to_ban_list,
+            playerlist_snapshot=playerlist_snapshot,
+        )
+    else:
+        print("[ADMIN-PROMOTION] Not alerting Head Admin (promoter not a registered promoter).")
