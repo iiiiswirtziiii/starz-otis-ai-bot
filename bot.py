@@ -969,33 +969,51 @@ def _format_spawn_event_line(evt: Dict[str, Any]) -> str:
 def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str, int, str]]:
     """
     Extract (gamertag, amount, item_text) from Rust Console spawn lines.
-    Handles quoted names, SERVER prefix, x6 / 6x formats.
+    Handles:
+      - [ServerVar] giving NAME 9 x Rocket
+      - [ServerVar] giving "NAME WITH SPACES" 9 x Rocket
+      - [ServerVar] giving NAME 9x Rocket
+      - [ServerVar] giving NAME x9 Rocket
     """
+    line = (console_line or "").replace("\u0000", "").strip()
+
+    # 1) 9 x Rocket
     m = re.search(
-        r"""
-        \[ServerVar\]          # prefix
-        .*?giving\s+           # anything before 'giving'
-        "?(.+?)"?\s+           # gamertag (quoted or not)
-        (?:x?\s*(\d+)|(\d+)\s*x)\s+  # amount: x6 OR 6 x OR 6x
-        (.+)                   # item text
-        """,
-        console_line,
-        re.IGNORECASE | re.VERBOSE,
+        r'\[ServerVar\].*?giving\s+"?(.+?)"?\s+(\d+)\s*x\s+(.+)$',
+        line,
+        re.IGNORECASE,
     )
+    if m:
+        gamertag = m.group(1).strip()
+        amount = int(m.group(2))
+        item_text = (m.group(3) or "").strip().strip(".")
+        return gamertag, amount, item_text
 
-    if not m:
-        return None
+    # 2) 9x Rocket
+    m = re.search(
+        r'\[ServerVar\].*?giving\s+"?(.+?)"?\s+(\d+)\s*x\s*(.+)$',
+        line,
+        re.IGNORECASE,
+    )
+    if m:
+        gamertag = m.group(1).strip()
+        amount = int(m.group(2))
+        item_text = (m.group(3) or "").strip().strip(".")
+        return gamertag, amount, item_text
 
-    gamertag = m.group(1).strip()
+    # 3) x9 Rocket
+    m = re.search(
+        r'\[ServerVar\].*?giving\s+"?(.+?)"?\s+x(\d+)\s+(.+)$',
+        line,
+        re.IGNORECASE,
+    )
+    if m:
+        gamertag = m.group(1).strip()
+        amount = int(m.group(2))
+        item_text = (m.group(3) or "").strip().strip(".")
+        return gamertag, amount, item_text
 
-    amount = m.group(2) or m.group(3)
-    try:
-        amount = int(amount)
-    except Exception:
-        amount = 0
-
-    item_text = (m.group(4) or "").strip().strip(".")
-    return gamertag, amount, item_text
+    return None
 
 
 
