@@ -968,39 +968,35 @@ def _format_spawn_event_line(evt: Dict[str, Any]) -> str:
     return f"{server} {item} {amount} {time_str}"
 def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str, int, str]]:
     """
-    More tolerant parser for Rust Console spawn lines.
+    Robust parser for Rust Console spawn lines.
 
-    Matches variants like:
-      [ServerVar] giving CPTA1N 6 x MLRS Rocket
-      [ServerVar] giving "CPTA1N" 6 x Timed Explosive Charge (C4)
-      [ServerVar] giving CPTA1N 6x MLRS Rocket
-      [ServerVar] giving CPTA1N 6 x "MLRS Rocket"
-      ...plus extra trailing text/punctuation.
+    Handles:
+    - timestamps / prefixes before [ServerVar]
+    - quoted or unquoted gamertags
+    - 'x' OR the multiply symbol '×'
+    - multi-word items (Rocket, MLRS Rocket, Timed Explosive Charge, etc.)
     """
+
     if not console_line:
         return None
 
     line = str(console_line).replace("\u0000", "").strip()
 
-    # If the line contains [ServerVar], start parsing from there
-    low = line.lower()
-    idx = low.find("[servervar]")
+    # Strip anything before [ServerVar] (timestamps, LOG:, etc.)
+    idx = line.lower().find("[servervar]")
     if idx != -1:
         line = line[idx:]
 
-    # Must include "giving"
-    if "giving" not in line.lower():
-        return None
-
+    # Accept "x" or "×" between amount and item
     pattern = re.compile(
         r"""
         \[ServerVar\]                 # prefix
-        .*?giving\s+                  # "...giving "
-        "?([^"\n\r\t]+?)"?\s+         # gamertag (quoted or not) (lazy)
-        (\d+)\s*x?\s*                 # amount, allow "6 x" or "6x"
-        x?\s*                         # allow optional second x if spacing weird
-        "?(.+?)"?                     # item name (anything, lazy)
-        (?:$|[\.\)]|\s+\(|\s+-)       # stop at end, '.' , ')' , ' (' , or ' -'
+        \s+giving\s+                  # giving
+        "?([^"\s]+)"?\s+              # gamertag (quoted or not)
+        (\d+)\s*                      # amount
+        (?:x|×)\s+                    # x or ×
+        (.+?)                         # item name (anything, non-greedy)
+        \s*$                          # end of line
         """,
         re.IGNORECASE | re.VERBOSE,
     )
@@ -1009,19 +1005,14 @@ def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str
     if not m:
         return None
 
-    gamertag = m.group(1).strip().strip('"')
+    gamertag = m.group(1).strip()
     try:
         amount = int(m.group(2))
     except ValueError:
         amount = 0
 
-    item_text = m.group(3).strip().strip('"')
-
-    # Clean common trailing junk
-    item_text = re.sub(r"\s+$", "", item_text)
-    item_text = re.sub(r"\s+\($", "", item_text)
-
-    return gamertag, max(amount, 1), item_text
+    item_text = m.group(3).strip()
+    return gamertag, amount, item_text
 
 
 
@@ -1420,9 +1411,11 @@ async def handle_rcon_console_line(
             print(f"[SPAWN-DEBUG] parser_line={_parse_spawn_from_console_line_full.__code__.co_firstlineno}")
             print(f"[SPAWN-DEBUG] msg_repr={msg_text!r}")
 
-            # 🔍 TEMP DEBUG — show raw spawn-ish lines
-            if ("servervar" in lt) or ("giving" in lt):
-               print(f"[SPAWN-RAW] {msg_text!r}")
+            # ✅ NEW DEBUG (MUST be INSIDE the admin_ids block)
+            if "[servervar]" in lt:
+                print(f"[SPAWN-RAW-REPR] {msg_text!r}")
+                probe = msg_text[msg_text.lower().find("giving"):][:80]
+                print("[SPAWN-RAW-PROBE]", probe, [ord(c) for c in probe])
 
             # ---- Case 1: real item spawn line ----
             parsed_full = _parse_spawn_from_console_line_full(msg_text)
@@ -1457,6 +1450,7 @@ async def handle_rcon_console_line(
                             created_at_ts=created_at_ts,
                         )
                     return  # stop here so we don't double-handle
+
 
 
             # ---- Case 2: kit claim success line (KITMANAGER) ----
