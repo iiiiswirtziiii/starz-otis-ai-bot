@@ -999,6 +999,7 @@ def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str
 
 
 
+
 class AdminSpawnAlertView(discord.ui.View):
     def __init__(self, gamertag: str, admin_id: int):
         super().__init__(timeout=60 * 30)  # 30 minutes
