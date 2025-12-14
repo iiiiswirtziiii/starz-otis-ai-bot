@@ -968,30 +968,26 @@ def _format_spawn_event_line(evt: Dict[str, Any]) -> str:
     return f"{server} {item} {amount} {time_str}"
     
 def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str, int, str]]:
-    """
-    Very robust parser for Rust Console spawn lines like:
-      12/14/2025 ... [ServerVar] giving NAME 9 x Rocket
-      [ServerVar] giving "NAME" 9 × MLRS Rocket
-    Returns (gamertag, amount, item_text) or None.
-    """
     if not console_line:
         return None
 
     line = str(console_line).replace("\u0000", "").strip()
 
-    # normalize common weirdness
-    line = line.replace("×", "x")          # unicode multiply -> x
-    line = line.replace("\u00A0", " ")     # NBSP -> space
+    # normalize invisible junk that breaks regex
+    line = line.replace("\u00A0", " ")   # NBSP
+    line = line.replace("×", "x")        # multiply sign -> x
 
-    # cut everything before [ServerVar] if present
     low = line.lower()
     idx = low.find("[servervar]")
     if idx != -1:
         line = line[idx:]
 
-    # 1) strict-but-flexible match
+    # TEMP: prove the parser is seeing what you think it is
+    print("[SPAWN-PARSER] line=", repr(line))
+
+    # Match: [ServerVar] giving NAME 9 x Rocket
     m = re.search(
-        r'\[ServerVar\]\s+giving\s+"?([^"\r\n]+?)"?\s+(\d+)\s*x\s+(.+)$',
+        r"\[servervar\]\s+giving\s+(\S+)\s+(\d+)\s*x\s+(.+)$",
         line,
         flags=re.IGNORECASE,
     )
@@ -999,22 +995,10 @@ def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str
         return None
 
     gamertag = m.group(1).strip()
-    try:
-        amount = int(m.group(2))
-    except Exception:
-        amount = 0
-
-    item_text = m.group(3).strip()
-
-    # trim common trailing junk (parens / extra info)
-    for cut in (" (", " [", "\t"):
-        if cut in item_text:
-            item_text = item_text.split(cut, 1)[0].strip()
-
-    # trim trailing punctuation
-    item_text = item_text.rstrip(".").strip()
-
+    amount = int(m.group(2))
+    item_text = m.group(3).strip().rstrip(".").strip()
     return gamertag, amount, item_text
+
 
 
 
@@ -1415,6 +1399,10 @@ async def handle_rcon_console_line(
                 print(f"[SPAWN-RAW-REPR] {msg_text!r}")
                 probe = msg_text[msg_text.lower().find("giving"):][:80]
                 print("[SPAWN-RAW-PROBE]", probe, [ord(c) for c in probe])
+            import inspect
+
+            print("[SPAWN-DEBUG] parser_file=", inspect.getsourcefile(_parse_spawn_from_console_line_full))
+            print("[SPAWN-DEBUG] parser_line=", _parse_spawn_from_console_line_full.__code__.co_firstlineno)
 
             # ---- Case 1: real item spawn line ----
             parsed_full = _parse_spawn_from_console_line_full(msg_text)
