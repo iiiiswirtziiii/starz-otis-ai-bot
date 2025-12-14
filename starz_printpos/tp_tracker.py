@@ -193,7 +193,6 @@ def update_connected_players(server_key: str, players: list) -> None:
     names = list(dict.fromkeys(n for n in names if n))
     now_ts = time.time()
 
-    # Empty server → sleep
     if not names:
         _empty_server_until[server_key] = now_ts + EMPTY_SERVER_COOLDOWN_SECONDS
         _poll_queues[server_key].clear()
@@ -206,28 +205,19 @@ def update_connected_players(server_key: str, players: list) -> None:
 
     online = set(names)
 
-    # purge offline cooldowns
     for (sk, pname) in list(_cooldown_until.keys()):
         if sk == server_key and pname not in online:
             _cooldown_until.pop((sk, pname), None)
 
-    # rebuild READY
     q = _poll_queues[server_key]
     q.clear()
     _ready_set[server_key].clear()
 
-for n in names:
-    # IMPORTANT:
-    # If they're in cooldown dict (even if "expired"), do NOT put them back into READY here.
-    # _wake_expired_for_server() will move them into the EXPIRED fast lane instead.
-    if (server_key, n) in _cooldown_until:
-        continue
+    for n in names:
+        if now_ts >= _cooldown_until.get((server_key, n), 0.0):
+            q.append(n)
+            _ready_set[server_key].add(n)
 
-    q.append(n)
-    _ready_set[server_key].add(n)
-
-
-    # clean expired
     expq = _expired_queues[server_key]
     kept = deque()
     _expired_set[server_key].clear()
@@ -237,6 +227,7 @@ for n in names:
             _expired_set[server_key].add(n)
     expq.clear()
     expq.extend(kept)
+
 
 
 # -------------------------
@@ -339,4 +330,5 @@ def start_printpos_polling() -> None:
     if not _position_poll_loop.is_running():
         _position_poll_loop.start()
         print("[STARZ-PRINTPOS] Position polling loop started.")
+
 
