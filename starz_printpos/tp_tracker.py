@@ -347,6 +347,12 @@ async def _position_poll_loop() -> None:
 
         _log_status_if_due(server_key, True)
 
+def start_printpos_polling() -> None:
+    # starts the tasks.loop that polls printpos
+    if not _position_poll_loop.is_running():
+        _position_poll_loop.start()
+        print("[STARZ-PRINTPOS] Position polling loop started.")
+
 
 
 
