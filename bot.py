@@ -1232,8 +1232,6 @@ async def handle_spawn_enforcement_for_event(
         print(f"[SPAWN-ENFORCE] Sent alert for admin_id={admin_id}, GT={gamertag}")
     except Exception as e:
         print(f"[SPAWN-ENFORCE] Failed to send alert embed: {e}")
-}")
-
 
 
 # ===================== ADMIN MONITOR =====================
