@@ -1969,7 +1969,7 @@ async def tp_delete(interaction: discord.Interaction, tp_type: str):
                 await asyncio.wait_for(tp_send_rcon(server_key, cmd), timeout=6.0)
             except Exception as e:
                 print(f"[TP-DELETE:{server_key}] Failed: {cmd!r}: {e}")
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(1)
 
     await interaction.followup.send(
         f"✅ Deleted **{tp_enum.value}** ({removed} slot(s)) + MAIN + SPAWN zones.",
@@ -2167,7 +2167,7 @@ async def tp_set_zone(
     # ==============================
     # Send zone commands via RCON
     # ==============================
-    total_sent = await _send_zone_setup_cmds(zone_setup_cmds)
+    total_sent = await _send_zone_setup_cmds(zone_setup_cmds, zone_name)
 
     await interaction.followup.send(
         f"✅ Set TP zone for **{friendly_name}** with trigger at "
@@ -2193,21 +2193,74 @@ def _get_spawn_count_for_tp(tp_type_value: str) -> int:
     return 1
 
 
-async def _send_zone_setup_cmds(zone_setup_cmds: list[str]) -> int:
+async def _send_zone_setup_cmds(zone_setup_cmds: list[str], zone_name: str) -> int:
     """
     Send the Rust zones.* setup commands to every server in ZONE_RCON_SERVER_KEYS.
-    Returns total commands sent successfully.
+
+    IMPORTANT (Railway-safe):
+    - Broadcast per step: send ONE command to ALL servers, then wait 2 seconds.
+    - After CREATE, verify the zone exists on EACH server before continuing edits.
+
+    Returns total commands sent successfully (counting successes).
     """
+    STEP_DELAY = 2.0
     total_sent = 0
-    for server_key in ZONE_RCON_SERVER_KEYS:
-        for cmd in zone_setup_cmds:
-            try:
-                print(f"[TP-ZONES:{server_key}] Sending zone setup command: {cmd}")
-                await run_rcon_command(cmd, client_key=server_key)
+
+    async def _broadcast(cmd: str, timeout: float = 8.0) -> list[object]:
+        nonlocal total_sent
+        tasks = []
+        for sk in ZONE_RCON_SERVER_KEYS:
+            print(f"[TP-ZONES:{sk}] Sending zone setup command: {cmd}")
+            tasks.append(asyncio.wait_for(run_rcon_command(cmd, client_key=sk), timeout=timeout))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for sk, res in zip(ZONE_RCON_SERVER_KEYS, results):
+            if isinstance(res, Exception):
+                print(f"[TP-ZONES:{sk}] Failed to send zone setup command {cmd!r}: {res}")
+            else:
                 total_sent += 1
-            except Exception as e:
-                print(f"[TP-ZONES:{server_key}] Failed to send zone setup command {cmd!r}: {e}")
+
+        await asyncio.sleep(STEP_DELAY)
+        return results
+
+    for cmd in zone_setup_cmds:
+        await _broadcast(cmd)
+
+        # ✅ VERIFY right after CREATE, before any edits
+        if cmd.startswith('zones.createcustomzone '):
+            verify_cmd = "zones.listcustomzones"
+
+            verify_tasks = []
+            for sk in ZONE_RCON_SERVER_KEYS:
+                verify_tasks.append(asyncio.wait_for(run_rcon_command(verify_cmd, client_key=sk), timeout=8.0))
+
+            verify_results = await asyncio.gather(*verify_tasks, return_exceptions=True)
+
+            for sk, resp in zip(ZONE_RCON_SERVER_KEYS, verify_results):
+                if isinstance(resp, Exception):
+                    raise RuntimeError(f"Zone verify failed on {sk}: {resp}")
+
+                # run_rcon_command returns dict or None depending on your helper;
+                # handle both safely:
+                msg = ""
+                if isinstance(resp, dict):
+                    msg = (resp.get("Message") or "")
+                elif resp is None:
+                    msg = ""
+                else:
+                    try:
+                        msg = str(resp)
+                    except Exception:
+                        msg = ""
+
+                if zone_name not in msg:
+                    raise RuntimeError(f"Zone '{zone_name}' failed to create on {sk}")
+
+            await asyncio.sleep(STEP_DELAY)
+
     return total_sent
+
 
 
 @bot.tree.command(name="ban", description="Ban a player by gamertag.")
