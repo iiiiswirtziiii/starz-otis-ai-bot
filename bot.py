@@ -968,40 +968,52 @@ def _format_spawn_event_line(evt: Dict[str, Any]) -> str:
     return f"{server} {item} {amount} {time_str}"
 def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str, int, str]]:
     """
-    Extract (gamertag, amount, item_text) from Rust Console spawn lines.
+    Robust parser for Rust Console spawn lines.
 
-    Handles prefixes like:
-      12/14/2025 14:37:13:LOG:  [ServerVar] giving NAME 9 x Rocket
+    Handles:
+    - quoted or unquoted gamertags
+    - variable capitalization
+    - multi-word items (C4, MLRS Rocket, Timed Explosive Charge)
+    - trailing punctuation or extra text
     """
+
     if not console_line:
         return None
 
     line = str(console_line).replace("\u0000", "").strip()
 
-    # Cut everything before [ServerVar] (handles timestamps/prefixes)
-    low = line.lower()
-    idx = low.find("[servervar]")
+    # Strip timestamps / prefixes before [ServerVar]
+    idx = line.lower().find("[servervar]")
     if idx != -1:
         line = line[idx:]
 
-    # SUPER strict + reliable for your real line:
-    # [ServerVar] giving NAME 9 x Rocket
-    m = re.search(
-        r"\[ServerVar\]\s+giving\s+(?P<gt>\S+)\s+(?P<amt>\d+)\s*x\s*(?P<item>.+)$",
-        line,
-        re.IGNORECASE,
+    # FINAL robust regex
+    pattern = re.compile(
+        r"""
+        \[ServerVar\]            # prefix
+        \s+giving\s+             # giving
+        "?([^"\s]+)"?\s+         # gamertag (quoted or not)
+        (\d+)\s*x\s*             # amount
+        ([A-Za-z0-9\s]+?)        # item name
+        (?:\.|\(|$)              # end / punctuation
+        """,
+        re.IGNORECASE | re.VERBOSE,
     )
+
+    m = pattern.search(line)
     if not m:
         return None
 
-    gamertag = (m.group("gt") or "").strip()
+    gamertag = m.group(1).strip()
     try:
-        amount = int(m.group("amt") or "0")
-    except Exception:
+        amount = int(m.group(2))
+    except ValueError:
         amount = 0
 
-    item_text = (m.group("item") or "").strip().strip(".")
+    item_text = m.group(3).strip()
+
     return gamertag, amount, item_text
+
 
 
 
