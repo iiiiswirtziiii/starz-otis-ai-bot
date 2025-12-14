@@ -966,30 +966,28 @@ def _format_spawn_event_line(evt: Dict[str, Any]) -> str:
     item = evt["item"]
     amount = evt["amount"]
     return f"{server} {item} {amount} {time_str}"
-
 def _parse_spawn_from_console_line_full(console_line: str) -> Optional[Tuple[str, int, str]]:
     """
     Extract (gamertag, amount, item_text) from a line like:
         [ServerVar] giving CPTA1N 6 x MLRS Rocket
-    Works even if gamertag contains spaces.
     """
     m = re.search(
-        r"\[ServerVar\]\s+giving\s+(.+?)\s+(\d+)\s+x\s+(.+)$",
+        r"\[ServerVar\]\s+giving\s+(\S+)\s+(\d+)\s+x\s+(.+)$",
         console_line,
         re.IGNORECASE,
     )
     if not m:
         return None
 
-    gamertag = (m.group(1) or "").strip().strip('"').strip("'")
-
+    gamertag = m.group(1).strip()
     try:
         amount = int(m.group(2))
-    except Exception:
+    except ValueError:
         amount = 0
 
     item_text = (m.group(3) or "").strip().strip(".")
     return gamertag, amount, item_text
+
 
 class AdminSpawnAlertView(discord.ui.View):
     def __init__(self, gamertag: str, admin_id: int):
@@ -1376,13 +1374,18 @@ async def handle_rcon_console_line(
     )
 
 
-
     # 5) High-risk spawn enforcement (ONLY on real spawn/kit lines)
     if RCON_ENABLED:
         admin_ids = find_matching_admin_ids_from_text(msg_text)
         if admin_ids:
+            # quick visibility on what we're seeing
+            if "servervar" in msg_text.lower() and "giving" in msg_text.lower():
+                print(f"[SPAWN-DEBUG] raw={msg_text!r} admin_ids={admin_ids}")
+
             # ---- Case 1: real item spawn line ----
             parsed_full = _parse_spawn_from_console_line_full(msg_text)
+            print(f"[SPAWN-DEBUG] parsed_full={parsed_full}")
+
             if parsed_full:
                 _gt, _amt, item_text = parsed_full
 
@@ -1407,13 +1410,11 @@ async def handle_rcon_console_line(
                             console_line=msg_text,
                             created_at_ts=created_at_ts,
                         )
-                    # IMPORTANT: if this was a spawn line, stop here (don’t double-handle)
                     return
 
             # ---- Case 2: kit claim success line (KITMANAGER) ----
             lt = msg_text.lower()
             if "[kitmanager]" in lt and "successfully gave" in lt:
-                # Pull kit name from: [KITMANAGER] Successfully gave [elitekit2] to [NAME]
                 m_kit = re.search(r"\[kitmanager\].*?\[([^\]]+)\]", msg_text, re.IGNORECASE)
                 kit_name = (m_kit.group(1) if m_kit else "").strip().lower()
 
@@ -1431,6 +1432,7 @@ async def handle_rcon_console_line(
                             created_at_ts=created_at_ts,
                         )
                     return
+
 
 
 
