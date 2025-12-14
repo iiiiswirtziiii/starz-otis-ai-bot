@@ -1997,7 +1997,6 @@ async def tp_delete(interaction: discord.Interaction, tp_type: str):
 
 
 
-
 @bot.tree.command(
     name="tp-set-zone",
     description="Set a teleport zone and up to 5 teleport spawn positions.",
