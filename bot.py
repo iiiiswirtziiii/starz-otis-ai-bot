@@ -315,6 +315,7 @@ from starz_printpos import (
 
 
 
+
 from starz_printpos.tp_zones import (
     get_configured_tp_types,
     delete_tp_type,
