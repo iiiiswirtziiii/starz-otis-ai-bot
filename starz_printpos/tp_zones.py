@@ -7,6 +7,7 @@ import random
 from dataclasses import dataclass, asdict
 from enum import Enum
 from typing import Dict, List, Tuple, Set, Optional
+from .tp_config import TP_TRIGGER_RADIUS
 
 from .tp_config import TP_ZONES_JSON_PATH, TELEPORT_COMMAND_TEMPLATE, TP_ZONE_COOLDOWN
 
@@ -76,7 +77,7 @@ class TpZone:
     exit_message: Optional[str] = None
 
     # Trigger radius for teleport checks (THIS is what matters for detection)
-    trigger_radius: float = 1.5
+    trigger_radius: float = 1.15
 
 
     # List of teleport spawn points
@@ -153,7 +154,7 @@ def _load_zones_from_disk() -> None:
                     color=data.get("color") or DEFAULT_ZONE_COLORS.get(tp_type, "WHITE"),
                     enter_message=data.get("enter_message"),
                     exit_message=data.get("exit_message"),
-                    trigger_radius=float(data.get("trigger_radius", 1.5)),
+                    trigger_radius=float(data.get("trigger_radius", 1.15)),
                     spawn_points=[(float(a), float(b), float(c)) for (a, b, c) in spawn_points],
                 )
             except Exception:
@@ -233,7 +234,7 @@ def set_tp_zone(
         color=final_color,
         enter_message=enter_message,
         exit_message=exit_message,
-        trigger_radius=1.5,
+        trigger_radius=1.15,
         spawn_points=spawn_points or [(float(dest_x), float(dest_y), float(dest_z))],
     )
 
@@ -377,7 +378,7 @@ def check_zones_for_player(
     current_zones: Set[Tuple[str, int]] = set()
 
     for zone in get_all_zones():
-        r = float(getattr(zone, "trigger_radius", 1.5) or 1.5)
+        r = float(getattr(zone, "trigger_radius", 1.15) or 1.15)
 
         # ✅ true spherical distance check (not a box check)
         dx = x - zone.zone_x
@@ -425,5 +426,6 @@ def delete_tp_type(tp_type: TPType | str) -> int:
     Returns how many slots were removed.
     """
     return clear_tp_type(tp_type)
+
 
 
