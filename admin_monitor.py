@@ -188,21 +188,40 @@ def fetch_admin_basic(admin_id: int) -> Optional[dict]:
 # How far back we look when summarising admin activity
 ADMIN_ACTIVITY_WINDOW_HOURS = 48
 
-
 def is_high_risk_spawn(detail: str) -> bool:
     """
-    Return True if a spawn detail string (e.g. 'ammo.rocket.hv 50')
-    matches one of the configured HIGH_RISK_SPAWN_ITEMS.
+    Return True ONLY for real high-risk GIVE events.
+    Prevents false positives on join / preload / playerlist / cache spam.
+
+    Expected real give line format:
+      giving <player> <amount> x <item>
     """
     if not detail:
         return False
 
-    parts = detail.split()
-    if not parts:
+    lt = detail.lower()
+
+    # Ignore known non-spawn noise (slot dumps, killfeed, console say spam, etc.)
+    for bad in IGNORE_SPAWN_SUBSTRINGS:
+        if bad in lt:
+            return False
+
+    # Must be a real give line:
+    # giving <player> <amount> x <item>
+    m = re.search(r"giving\s+\S+\s+(\d+)\s+x\s+(.+)", lt)
+    if not m:
         return False
 
-    item = parts[0].strip().lower()
-    return item in {name.lower() for name in HIGH_RISK_SPAWN_ITEMS}
+    item_raw = m.group(2).strip()
+
+    # Match against configured high-risk items
+    risky_set = {name.lower() for name in HIGH_RISK_SPAWN_ITEMS}
+    for risky in risky_set:
+        if risky and risky in item_raw:
+            return True
+
+    return False
+
 
 
 class AdminSpawnEnforcementView(discord.ui.View):
@@ -993,4 +1012,5 @@ async def update_admin_log_for_admin(
         conn3.close()
     except Exception as e:
         print(f"[ADMIN-MONITOR] Failed to store log message pointer: {e}")
+
 
