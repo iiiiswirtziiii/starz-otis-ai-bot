@@ -2,7 +2,6 @@ import os
 import json
 import websockets
 import random
-dt = datetime.fromtimestamp(created_at_ts, tz=UTC)
 from typing import Dict, Any, List, Tuple, Optional
 from dotenv import load_dotenv
 
@@ -1190,17 +1189,18 @@ async def handle_spawn_enforcement_for_event(
     time_str = dt.strftime("%Y-%m-%d %I:%M %p").lstrip("0")
 
     # If we couldn't parse an amount (kits), assume 1 for display
+    # If we couldn't parse an amount (kits), assume 1 for display
     if amount <= 0:
         amount = 1
-desc_lines = [
-    f"**Server:** `{server_name}`",
-    f"**Gamertag:** `{gamertag}`",
-    f"**Item:** `{matched_item}` x{amount}",
-    f"**Time (UTC):** `{time_str}`",
-    "",
-    "_Otis auto-kicked and banned this admin for spawning high-risk items._",
-]
 
+    desc_lines = [
+        f"**Server:** `{server_name}`",
+        f"**Gamertag:** `{gamertag}`",
+        f"**Item:** `{matched_item}` x{amount}",
+        f"**Time (UTC):** `{time_str}`",
+        "",
+        "_Otis auto-kicked and banned this admin for spawning high-risk items._",
+    ]
 
     embed = discord.Embed(
         title="🚨 High-Risk Admin Spawn Detected",
@@ -1208,6 +1208,7 @@ desc_lines = [
         color=0xE02424,
         timestamp=dt,
     )
+
 
     if embed_discord_id:
         embed.add_field(name="Admin", value=f"<@{embed_discord_id}>", inline=False)
@@ -1377,7 +1378,7 @@ async def handle_rcon_console_line(
     if not matching_admin_ids:
         return
 
-    server_name = server_key
+   server_name = server_name_for_key(server_key)  # or your own mapping
 
     # 3) Admin monitor log update
     await log_admin_activity_for_ids(
