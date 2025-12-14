@@ -325,7 +325,14 @@ async def _position_poll_loop() -> None:
                 _stats[server_key]["sent"] += 1
 
                 if resp:
+                    # Some RCONs return the printpos output directly
                     await process_printpos_response(server_key, pname, resp)
+                else:
+                    # If the RCON does NOT return output, the coords will arrive as a console line.
+                    # Queue the player name so handle_printpos_console_line can match it.
+                    _pending_positions[server_key].append(pname)
+
+
 
                 # Re-queue logic:
                 # - NEAR players go back to READY
@@ -352,6 +359,7 @@ def start_printpos_polling() -> None:
     if not _position_poll_loop.is_running():
         _position_poll_loop.start()
         print("[STARZ-PRINTPOS] Position polling loop started.")
+
 
 
 
